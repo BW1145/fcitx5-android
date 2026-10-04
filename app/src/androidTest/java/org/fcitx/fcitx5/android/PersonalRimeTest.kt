@@ -4,6 +4,10 @@
 package org.fcitx.fcitx5.android
 
 import androidx.test.platform.app.InstrumentationRegistry
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.setViewTreeLifecycleOwner
+import androidx.lifecycle.testing.TestLifecycleOwner
+import android.os.SystemClock
 import android.text.Selection
 import android.view.MotionEvent
 import android.view.View
@@ -25,6 +29,10 @@ import org.fcitx.fcitx5.android.data.UserDataManager
 import org.fcitx.fcitx5.android.data.theme.ThemeManager
 import org.fcitx.fcitx5.android.input.editing.BulkDeletion
 import org.fcitx.fcitx5.android.input.preedit.PreeditUi
+import org.fcitx.fcitx5.android.input.keyboard.CustomGestureView
+import org.fcitx.fcitx5.android.input.keyboard.KeyAction
+import org.fcitx.fcitx5.android.input.keyboard.KeyActionListener
+import org.fcitx.fcitx5.android.input.keyboard.TextKeyboard
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.util.zip.ZipInputStream
@@ -183,5 +191,40 @@ class PersonalRimeTest {
             SavedContentStore.delete(first.id)
             SavedContentStore.delete(second.id)
         }
+    }
+
+    @Test
+    fun holdingBackspaceThenSwipingUpClearsOnceAndStopsRepeat() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val actions = java.util.Collections.synchronizedList(mutableListOf<KeyAction>())
+        lateinit var key: CustomGestureView
+        var downAt = 0L
+        fun touch(action: Int, y: Float) {
+            val event = MotionEvent.obtain(downAt, SystemClock.uptimeMillis(), action, key.width / 2f, y, 0)
+            key.dispatchTouchEvent(event)
+            event.recycle()
+        }
+        instrumentation.runOnMainSync {
+            val keyboard = TextKeyboard(instrumentation.targetContext, ThemeManager.DefaultTheme)
+            keyboard.setViewTreeLifecycleOwner(TestLifecycleOwner(Lifecycle.State.RESUMED))
+            keyboard.keyActionListener = KeyActionListener { action, _ -> actions.add(action) }
+            keyboard.measure(View.MeasureSpec.makeMeasureSpec(600, View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(300, View.MeasureSpec.EXACTLY))
+            keyboard.layout(0, 0, 600, 300)
+            key = keyboard.findViewById(R.id.button_backspace)
+            downAt = SystemClock.uptimeMillis()
+            touch(MotionEvent.ACTION_DOWN, key.height / 2f)
+        }
+        Thread.sleep(CustomGestureView.longPressDelay.toLong() + 150)
+        instrumentation.runOnMainSync {
+            touch(MotionEvent.ACTION_MOVE, -key.height * 2f)
+            touch(MotionEvent.ACTION_UP, -key.height * 2f)
+        }
+        assertEquals(1, actions.count { it is KeyAction.ClearBeforeCursorAction })
+        val repeats = actions.count { it is KeyAction.SymAction }
+        assertTrue("Long press must still repeat ordinary backspace", repeats > 0)
+        Thread.sleep(150)
+        assertEquals(repeats, actions.count { it is KeyAction.SymAction })
+        assertFalse(actions.any { it is KeyAction.DeleteSelectionAction })
     }
 }
