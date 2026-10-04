@@ -98,7 +98,10 @@ class ThemeSerializationTest {
             }
         """.trimIndent()
         val (decoded, migrated) = raw.toCustomTheme()
-        Assert.assertEquals("Migration shouldn't happen", false, migrated)
+        Assert.assertEquals("Migration should happen", true, migrated)
+        Assert.assertEquals(decoded.keyTextColor, decoded.candidateTextColor)
+        Assert.assertEquals(decoded.keyTextColor, decoded.candidateLabelColor)
+        Assert.assertEquals(decoded.altKeyTextColor, decoded.candidateCommentColor)
         Assert.assertEquals("Round trip", decoded, decoded.toJson().toCustomTheme().first)
     }
 }

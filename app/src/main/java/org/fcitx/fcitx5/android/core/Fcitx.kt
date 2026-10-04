@@ -447,6 +447,7 @@ class Fcitx(private val context: Context) : FcitxAPI, FcitxLifecycleOwner {
             """.trimIndent()
             )
             with(FcitxApplication.getInstance().directBootAwareContext) {
+                PersonalDefaults.install(this)
                 startupFcitx(
                     locale,
                     dataDir,

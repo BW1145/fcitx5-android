@@ -56,3 +56,6 @@
 [submodule "plugin/thai/src/main/cpp/fcitx5-libthai"]
 	path = plugin/thai/src/main/cpp/fcitx5-libthai
 	url = https://github.com/fcitx/fcitx5-libthai
+[submodule "third_party/rime-ice"]
+	path = third_party/rime-ice
+	url = https://github.com/iDvel/rime-ice.git

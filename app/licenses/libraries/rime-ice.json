@@ -1,0 +1,8 @@
+{
+    "uniqueId": "iDvel/rime-ice",
+    "name": "雾凇拼音",
+    "description": "Offline full-pinyin schema and Chinese/English dictionaries",
+    "website": "https://github.com/iDvel/rime-ice",
+    "tag": "native",
+    "licenses": ["GPL-3.0-only"]
+}

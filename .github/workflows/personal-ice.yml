@@ -1,0 +1,123 @@
+name: Personal Ice APK
+
+on:
+  push:
+    branches: [personal-ice]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: personal-ice-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    if: github.repository == 'BW1145/fcitx5-android'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v4
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y extra-cmake-modules gettext
+          sdkmanager 'platforms;android-36' 'build-tools;36.1.0' 'ndk;28.0.13004108' 'cmake;3.31.6'
+      - uses: gradle/actions/setup-gradle@v6
+      - name: Build signed arm64 APK
+        env:
+          SIGN_KEY_BASE64: ${{ secrets.PERSONAL_SIGNING_KEY }}
+          SIGN_KEY_PWD: ${{ secrets.PERSONAL_SIGNING_PASSWORD }}
+          SIGN_KEY_ALIAS: personal
+        run: |
+          ./gradlew -PbuildABI=arm64-v8a -PbuildVersionName=1.0.${{ github.run_number }}-ice :app:assembleRelease
+      - name: Verify installable APK and offline permissions
+        run: |
+          mkdir -p dist
+          apk=$(find app/build/outputs/apk/release -name '*.apk' -print -quit)
+          python3 scripts/verify_personal_apk.py "$apk" arm64-v8a
+          "$ANDROID_HOME/build-tools/36.1.0/apksigner" verify --verbose --print-certs "$apk" > dist/signature.txt
+          "$ANDROID_HOME/build-tools/36.1.0/aapt" dump permissions "$apk" > dist/permissions.txt
+          if grep -q 'android.permission.INTERNET' dist/permissions.txt; then
+            echo 'Unexpected internet permission'
+            exit 1
+          fi
+          cp "$apk" dist/fcitx5-ice-arm64.apk
+          cp app/build/outputs/apk/release/build-metadata.json dist/
+          cd dist
+          sha256sum fcitx5-ice-arm64.apk > SHA256SUMS
+      - uses: actions/upload-artifact@v7
+        with:
+          name: arm64-apk
+          path: dist/
+
+  smoke:
+    if: github.repository == 'BW1145/fcitx5-android'
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          submodules: recursive
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v4
+      - name: Install build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y extra-cmake-modules gettext
+          sdkmanager 'platforms;android-36' 'build-tools;36.1.0' 'ndk;28.0.13004108' 'cmake;3.31.6'
+      - uses: gradle/actions/setup-gradle@v6
+      - name: Enable Android emulator acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Build emulator test APKs
+        run: ./gradlew -PbuildABI=x86_64 :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest
+      - name: Test first launch, pinyin, Lua and restart
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          script: ./gradlew -PbuildABI=x86_64 -Pandroid.testInstrumentationRunnerArguments.class=org.fcitx.fcitx5.android.PersonalRimeTest :app:connectedDebugAndroidTest
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: rime-runtime-test-results
+          path: |
+            app/build/reports/androidTests/connected/
+            app/build/outputs/androidTest-results/connected/
+
+  release:
+    if: github.repository == 'BW1145/fcitx5-android'
+    needs: [build, smoke]
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: arm64-apk
+          path: dist
+      - name: Publish the personal APK in this fork
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          cat > notes.md <<'EOF'
+          适用于 arm64 安卓设备的安装包，内置 Rime 和雾凇全拼。
+          安装后打开“小企鹅雾凇”，按向导启用并选择键盘，等待首次词库部署完成。
+          安装包已通过签名、离线权限、词库完整性和安卓模拟器输入验证。
+          对应源码和依赖版本记录在本发布标签中。
+          EOF
+          gh release create 'ice-1.0.${{ github.run_number }}' dist/* --repo '${{ github.repository }}' --target '${{ github.sha }}' --title '小企鹅雾凇 1.0.${{ github.run_number }}' --notes-file notes.md

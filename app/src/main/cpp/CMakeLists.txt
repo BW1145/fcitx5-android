@@ -88,3 +88,24 @@ install(DIRECTORY "${PREBUILT_DIR}/chinese-addons-data/pinyinhelper" DESTINATION
 install(DIRECTORY "${PREBUILT_DIR}/libime/table" DESTINATION "${FCITX_INSTALL_PKGDATADIR}" COMPONENT prebuilt-assets)
 install(DIRECTORY "${PREBUILT_DIR}/libime/data/" DESTINATION "${FCITX_INSTALL_DATADIR}/libime" COMPONENT prebuilt-assets)
 install(DIRECTORY "${PREBUILT_DIR}/opencc/data/" DESTINATION "${FCITX_INSTALL_DATADIR}/opencc" COMPONENT prebuilt-assets)
+
+# Bundle the Rime addon in the main APK using the upstream plugin build.
+add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../../../plugin/rime/src/main/cpp"
+                 "${CMAKE_CURRENT_BINARY_DIR}/bundled-rime")
+
+# Install the pinned offline schema and dictionaries after Rime's base data.
+set(RIME_ICE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../../../third_party/rime-ice")
+install(DIRECTORY "${RIME_ICE_DIR}/"
+        DESTINATION "${FCITX_INSTALL_DATADIR}/rime-data"
+        COMPONENT prebuilt-assets
+        FILES_MATCHING
+        PATTERN "*.yaml" PATTERN "*.txt" PATTERN "*.lua" PATTERN "*.json"
+        PATTERN ".git" EXCLUDE PATTERN ".github" EXCLUDE
+        PATTERN "others" EXCLUDE PATTERN "build" EXCLUDE
+        PATTERN "opencc" EXCLUDE)
+install(DIRECTORY "${RIME_ICE_DIR}/opencc/"
+        DESTINATION "${FCITX_INSTALL_DATADIR}/opencc"
+        COMPONENT prebuilt-assets)
+install(FILES "${RIME_ICE_DIR}/LICENSE"
+        DESTINATION "${FCITX_INSTALL_DATADIR}/rime-data"
+        RENAME rime-ice.LICENSE COMPONENT prebuilt-assets)
