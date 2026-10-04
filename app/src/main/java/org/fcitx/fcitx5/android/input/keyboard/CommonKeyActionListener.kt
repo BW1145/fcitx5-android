@@ -63,6 +63,7 @@ class CommonKeyActionListener :
     private val langSwitchKeyBehavior by kbdPrefs.langSwitchKeyBehavior
 
     private var backspaceSwipeState = Stopped
+    private var backspaceStartedWithPreedit = false
 
     // there should be a new fcitx API for this
     private suspend fun FcitxAPI.commitAndReset() {
@@ -90,6 +91,19 @@ class CommonKeyActionListener :
     val listener by lazy {
         KeyActionListener { action, _ ->
             when (action) {
+                is KeyAction.BeginBackspaceAction -> {
+                    backspaceSwipeState = Stopped
+                    backspaceStartedWithPreedit = !preeditState.isEmpty
+                    service.beginBackspaceGesture(backspaceStartedWithPreedit)
+                }
+                is KeyAction.ClearBeforeCursorAction -> {
+                    backspaceSwipeState = Stopped
+                    val preeditOnly = backspaceStartedWithPreedit
+                    service.postFcitxJob {
+                        reset()
+                        if (!preeditOnly) service.lifecycleScope.launch { service.clearBeforeCursor() }
+                    }
+                }
                 is FcitxKeyAction -> service.postFcitxJob {
                     sendKey(action.act, action.states.states, action.code)
                 }

@@ -67,6 +67,7 @@ open class CustomGestureView(ctx: Context) : FrameLayout(ctx) {
 
     var swipeEnabled = false
     var swipeRepeatEnabled = false
+    var swipeAfterRepeatEnabled = false
     var swipeThresholdX = 24f
     var swipeThresholdY = 24f
 
@@ -231,7 +232,7 @@ open class CustomGestureView(ctx: Context) : FrameLayout(ctx) {
                         isPressed = false
                     }
                 }
-                if (!swipeEnabled || longPressTriggered || repeatStarted) return true
+                if (!swipeEnabled || (!swipeAfterRepeatEnabled && (longPressTriggered || repeatStarted))) return true
                 val countX = consumeSwipe(x, SwipeAxis.X)
                 val countY = consumeSwipe(y, SwipeAxis.Y)
                 dispatchGestureEvent(GestureType.Move, x, y, countX, countY)
@@ -259,6 +260,10 @@ open class CustomGestureView(ctx: Context) : FrameLayout(ctx) {
         val consumed = onGestureListener?.onGesture(this, event) ?: return
         if (consumed && !gestureConsumed) {
             gestureConsumed = true
+            if (swipeAfterRepeatEnabled) {
+                repeatJob?.cancel()
+                repeatJob = null
+            }
         }
     }
 

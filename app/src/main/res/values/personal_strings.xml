@@ -1,0 +1,12 @@
+<resources>
+    <string name="saved_content">Saved content</string>
+    <string name="saved_content_add">Add</string>
+    <string name="saved_content_empty">Save addresses, replies and other text here. Tap to insert; hold to edit or reorder.</string>
+    <string name="saved_content_title_hint">Name (optional)</string>
+    <string name="saved_content_text_hint">Content to save</string>
+    <string name="saved_content_move_up">Move up</string>
+    <string name="saved_content_move_down">Move down</string>
+    <string name="restore_deleted_content">Restore deleted text</string>
+    <string name="bulk_delete_unavailable">This app cannot provide all text before the cursor.</string>
+    <string name="bulk_delete_done">Text cleared. Restore it from the three-dot menu.</string>
+</resources>

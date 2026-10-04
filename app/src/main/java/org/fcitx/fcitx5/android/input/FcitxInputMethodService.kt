@@ -30,6 +30,7 @@ import android.view.inputmethod.InlineSuggestionsRequest
 import android.view.inputmethod.InlineSuggestionsResponse
 import android.view.inputmethod.InputMethodSubtype
 import android.widget.FrameLayout
+import android.widget.Toast
 import android.widget.inline.InlinePresentationSpec
 import androidx.annotation.Keep
 import androidx.annotation.RequiresApi
@@ -65,6 +66,7 @@ import org.fcitx.fcitx5.android.data.theme.Theme
 import org.fcitx.fcitx5.android.data.theme.ThemeManager
 import org.fcitx.fcitx5.android.input.cursor.CursorRange
 import org.fcitx.fcitx5.android.input.cursor.CursorTracker
+import org.fcitx.fcitx5.android.input.editing.BulkDeletion
 import org.fcitx.fcitx5.android.utils.InputMethodUtil
 import org.fcitx.fcitx5.android.utils.alpha
 import org.fcitx.fcitx5.android.utils.forceShowSelf
@@ -121,6 +123,29 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     private var capabilityFlags = CapabilityFlags.DefaultFlags
 
     private val selection = CursorTracker()
+    private val bulkDeletion = BulkDeletion()
+    val canRestoreDeletedContent get() = bulkDeletion.canRestore
+
+    fun beginBackspaceGesture(hasPreedit: Boolean) {
+        if (!hasPreedit) bulkDeletion.begin(currentInputConnection, selection.latest.start)
+    }
+
+    fun clearBeforeCursor() {
+        val ic = currentInputConnection ?: return
+        val cursor = selection.latest.start
+        if (selection.latest.isNotEmpty()) ic.setSelection(cursor, cursor)
+        if (bulkDeletion.clear(ic, cursor)) {
+            selection.predict(0)
+            Toast.makeText(this, R.string.bulk_delete_done, Toast.LENGTH_SHORT).show()
+        } else {
+            Toast.makeText(this, R.string.bulk_delete_unavailable, Toast.LENGTH_SHORT).show()
+        }
+    }
+
+    fun restoreDeletedContent() {
+        val ic = currentInputConnection ?: return
+        bulkDeletion.restore(ic, selection.latest.start)?.let { selection.predict(it) }
+    }
 
     val currentInputSelection: CursorRange
         get() = selection.latest
@@ -422,6 +447,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
 
     fun commitText(text: String, cursor: Int = -1) {
         val ic = currentInputConnection ?: return
+        if (text.isNotEmpty()) bulkDeletion.reset()
         // when composing text equals commit content, finish composing text as-is
         if (composing.isNotEmpty() && composingText.toString() == text) {
             val c = if (cursor == -1) text.length else cursor
@@ -730,6 +756,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         // initialSel{Start,End} is outdated. but it's the client app's responsibility to send
         // right cursor position, try to workaround this would simply introduce more bugs.
         selection.resetTo(attribute.initialSelStart, attribute.initialSelEnd)
+        bulkDeletion.reset()
         resetComposingState()
         val flags = CapabilityFlags.fromEditorInfo(attribute)
         capabilityFlags = flags
@@ -1064,6 +1091,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     }
 
     override fun onFinishInput() {
+        bulkDeletion.reset()
         Timber.d("onFinishInput")
         postFcitxJob {
             focus(false)

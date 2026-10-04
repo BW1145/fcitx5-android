@@ -7,6 +7,16 @@ import android.content.Context
 
 /** Seed the personal input configuration before Fcitx reads its profile. */
 internal object PersonalDefaults {
+    suspend fun enableBundledJapanese(context: Context, api: FcitxAPI) {
+        val root = context.getExternalFilesDir(null) ?: context.filesDir
+        val marker = root.resolve("config/personal-anthy-enabled")
+        if (marker.exists() || api.availableIme().none { it.uniqueName == "anthy" }) return
+        val enabled = api.enabledIme().map { it.uniqueName }
+        if ("anthy" !in enabled) api.setEnabledIme((enabled + "anthy").toTypedArray())
+        marker.parentFile?.mkdirs()
+        marker.writeText("1\n", Charsets.UTF_8)
+    }
+
     fun install(context: Context) {
         val root = context.getExternalFilesDir(null) ?: context.filesDir
         for (path in listOf("config/profile", "config/config", "data/rime/default.custom.yaml")) {

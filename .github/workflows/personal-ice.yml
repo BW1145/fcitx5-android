@@ -1,4 +1,4 @@
-name: Personal Ice APK
+name: Personal Custom APK
 
 on:
   push:
@@ -37,7 +37,7 @@ jobs:
           SIGN_KEY_PWD: ${{ secrets.PERSONAL_SIGNING_PASSWORD }}
           SIGN_KEY_ALIAS: personal
         run: |
-          ./gradlew -PbuildABI=arm64-v8a -PbuildVersionName=1.0.${{ github.run_number }}-ice :app:assembleRelease
+          ./gradlew -PbuildABI=arm64-v8a -PbuildVersionName=1.1.${{ github.run_number }} :app:assembleRelease
       - name: Verify installable APK and offline permissions
         run: |
           mkdir -p dist
@@ -49,10 +49,10 @@ jobs:
             echo 'Unexpected internet permission'
             exit 1
           fi
-          cp "$apk" dist/fcitx5-ice-arm64.apk
+          cp "$apk" dist/fcitx5-custom-arm64.apk
           cp app/build/outputs/apk/release/build-metadata.json dist/
           cd dist
-          sha256sum fcitx5-ice-arm64.apk > SHA256SUMS
+          sha256sum fcitx5-custom-arm64.apk > SHA256SUMS
       - uses: actions/upload-artifact@v7
         with:
           name: arm64-apk
@@ -83,7 +83,7 @@ jobs:
           sudo udevadm trigger --name-match=kvm
       - name: Build emulator test APKs
         run: ./gradlew -PbuildABI=x86_64 :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest
-      - name: Test first launch, pinyin, Lua and restart
+      - name: Test pinyin editing, Japanese, deletion and saved content
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -115,9 +115,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           cat > notes.md <<'EOF'
-          适用于 arm64 安卓设备的安装包，内置 Rime 和雾凇全拼。
-          安装后打开“小企鹅雾凇”，按向导启用并选择键盘，等待首次词库部署完成。
+          小企鹅输入法定制版，适用于 arm64 安卓设备，内置 Rime、雾凇全拼和 Anthy 日语。
+          支持点击修改待选拼音、横向滑动候选词、长按删除键后上滑清空及恢复正文、常用内容面板。
+          常用内容入口位于剪贴板旁边；光标控制和恢复删除位于三个点菜单。
+          覆盖安装保留已有配置；升级后日语自动加入输入法列表，可通过语言切换键选择。
           安装包已通过签名、离线权限、词库完整性和安卓模拟器输入验证。
           对应源码和依赖版本记录在本发布标签中。
           EOF
-          gh release create 'ice-1.0.${{ github.run_number }}' dist/* --repo '${{ github.repository }}' --target '${{ github.sha }}' --title '小企鹅雾凇 1.0.${{ github.run_number }}' --notes-file notes.md
+          gh release create 'custom-1.1.${{ github.run_number }}' dist/* --repo '${{ github.repository }}' --target '${{ github.sha }}' --title '小企鹅输入法定制版 1.1.${{ github.run_number }}' --notes-file notes.md

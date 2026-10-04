@@ -36,8 +36,8 @@ class ButtonsBarUi(override val ctx: Context, private val theme: Theme) : Ui {
         contentDescription = ctx.getString(R.string.redo)
     }
 
-    val cursorMoveButton = toolButton(R.drawable.ic_cursor_move).apply {
-        contentDescription = ctx.getString(R.string.text_editing)
+    val savedContentButton = toolButton(R.drawable.ic_saved_content).apply {
+        contentDescription = ctx.getString(R.string.saved_content)
     }
 
     val clipboardButton = toolButton(R.drawable.ic_clipboard).apply {

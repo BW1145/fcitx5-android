@@ -5,6 +5,7 @@
 package org.fcitx.fcitx5.android.input.preedit
 
 import android.content.Context
+import android.annotation.SuppressLint
 import android.graphics.Paint
 import android.graphics.drawable.ShapeDrawable
 import android.graphics.drawable.shapes.RectShape
@@ -12,6 +13,7 @@ import android.text.Spanned
 import android.text.SpannedString
 import android.text.style.DynamicDrawableSpan
 import android.view.View
+import android.view.MotionEvent
 import android.widget.TextView
 import androidx.annotation.ColorInt
 import androidx.core.text.buildSpannedString
@@ -54,6 +56,32 @@ open class PreeditUi(
 
     private val downView = createTextView()
 
+    var onCursorRequested: ((Int) -> Unit)? = null
+    private var preedit = FcitxEvent.InputPanelEvent.Data()
+    private var prefixLength = 0
+    private var cursorMarker = -1
+
+    @SuppressLint("ClickableViewAccessibility")
+    private fun enableCursorTouch() {
+        upView.setOnTouchListener { view, event ->
+            if (onCursorRequested == null || preedit.preedit.isEmpty()) return@setOnTouchListener false
+            if (event.actionMasked == MotionEvent.ACTION_UP) {
+                val displayed = upView.getOffsetForPosition(event.x, event.y)
+                val offset = displayed - if (cursorMarker >= 0 && displayed > cursorMarker) 1 else 0
+                if (offset >= prefixLength) {
+                    val position = (offset - prefixLength).coerceIn(0, preedit.preedit.length)
+                    onCursorRequested?.invoke(preedit.preedit.codePointCountUntil(position))
+                }
+                view.performClick()
+            }
+            true
+        }
+    }
+
+    init {
+        enableCursorTouch()
+    }
+
     var visible = false
         private set
 
@@ -68,6 +96,8 @@ open class PreeditUi(
     }
 
     fun update(inputPanel: FcitxEvent.InputPanelEvent.Data) {
+        preedit = inputPanel
+        prefixLength = inputPanel.auxUp.length
         val activeBkg = theme.genericActiveBackgroundColor
         val upString: SpannedString
         val upCursor: Int
@@ -93,7 +123,8 @@ open class PreeditUi(
             updateTextView(downView, "", false)
             return
         }
-        val upStringWithCursor = if (upCursor < 0 || upCursor == upString.length) {
+        cursorMarker = if (upCursor >= 0 && (upCursor < upString.length || onCursorRequested != null)) upCursor else -1
+        val upStringWithCursor = if (cursorMarker < 0) {
             upString
         } else buildSpannedString {
             if (upCursor > 0) append(upString, 0, upCursor)

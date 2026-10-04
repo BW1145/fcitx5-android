@@ -9,7 +9,6 @@ import android.annotation.SuppressLint
 import android.view.ViewGroup
 import androidx.annotation.CallSuper
 import androidx.recyclerview.widget.RecyclerView
-import com.google.android.flexbox.FlexboxLayoutManager
 import org.fcitx.fcitx5.android.core.CandidateWord
 import org.fcitx.fcitx5.android.data.theme.Theme
 import org.fcitx.fcitx5.android.input.candidates.CandidateItemUi
@@ -41,6 +40,12 @@ open class HorizontalCandidateViewAdapter(val theme: Theme) :
 
     override fun getItemCount() = candidates.size
 
+    fun appendCandidates(data: Array<CandidateWord>) {
+        val start = candidates.size
+        candidates += data
+        notifyItemRangeInserted(start, data.size)
+    }
+
     override fun getItemId(position: Int) = candidates.getOrNull(position).hashCode().toLong()
 
     @CallSuper
@@ -49,7 +54,7 @@ open class HorizontalCandidateViewAdapter(val theme: Theme) :
         ui.root.apply {
             minimumWidth = dp(40)
             setPaddingDp(10, 0, 10, 0)
-            layoutParams = FlexboxLayoutManager.LayoutParams(wrapContent, matchParent)
+            layoutParams = RecyclerView.LayoutParams(wrapContent, matchParent)
         }
         return CandidateViewHolder(ui)
     }

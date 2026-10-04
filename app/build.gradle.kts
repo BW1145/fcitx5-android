@@ -14,6 +14,7 @@ android {
 
     defaultConfig {
         applicationId = "org.fcitx.fcitx5.android.bw1145"
+        versionCode = 122
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         @Suppress("UnstableApiUsage")
@@ -28,7 +29,8 @@ android {
                     "androidfrontend",
                     "androidkeyboard",
                     "androidnotification",
-                    "rime"
+                    "rime",
+                    "anthy"
                 )
             }
         }

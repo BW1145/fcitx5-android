@@ -11,6 +11,11 @@ with zipfile.ZipFile(apk) as archive:
     names = set(archive.namelist())
     required = {
         f"lib/{abi}/librime.so",
+        f"lib/{abi}/libanthy.so",
+        "assets/usr/share/fcitx5/addon/anthy.conf",
+        "assets/usr/share/fcitx5/inputmethod/anthy.conf",
+        "assets/usr/share/anthy/anthy.dic",
+        "assets/usr/share/anthy/anthy-unicode.conf",
         "assets/usr/share/fcitx5/addon/rime.conf",
         "assets/usr/share/fcitx5/inputmethod/rime.conf",
         "assets/usr/share/rime-data/default.yaml",
@@ -30,4 +35,4 @@ with zipfile.ZipFile(apk) as archive:
         if name.startswith("assets/"):
             digest = hashlib.sha256(archive.read(name)).hexdigest()
             assert descriptor["files"][name.removeprefix("assets/")] == digest, name
-    print(f"Verified bundled Rime, dictionaries, Lua, and asset checksums: {apk.name}")
+    print(f"Verified bundled Rime, Anthy, dictionaries, Lua, and asset checksums: {apk.name}")

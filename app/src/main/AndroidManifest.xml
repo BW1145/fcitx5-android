@@ -121,6 +121,14 @@
             android:theme="@style/Theme.DialogTheme"
             android:windowSoftInputMode="stateAlwaysVisible|adjustPan" />
 
+        <activity
+            android:name=".ui.main.SavedContentEditActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:label="@string/saved_content"
+            android:theme="@style/Theme.DialogTheme"
+            android:windowSoftInputMode="stateAlwaysVisible|adjustPan" />
+
         <service
             android:name=".input.FcitxInputMethodService"
             android:directBootAware="true"

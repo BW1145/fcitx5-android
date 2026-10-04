@@ -105,7 +105,26 @@ class Fcitx(private val context: Context) : FcitxAPI, FcitxLifecycleOwner {
     override suspend fun select(idx: Int): Boolean = withFcitxContext { selectCandidate(idx) }
     override suspend fun isEmpty(): Boolean = withFcitxContext { isInputPanelEmpty() }
     override suspend fun reset() = withFcitxContext { resetInputContext() }
-    override suspend fun moveCursor(position: Int) = withFcitxContext { repositionCursor(position) }
+    override suspend fun moveCursor(position: Int) = withFcitxContext {
+        if (inputMethodEntryCached.uniqueName != "rime") {
+            repositionCursor(position)
+        } else {
+            // Rime has no InvokeAction handler; its default would commit and reset.
+            // Move using its arrow keys, measuring the displayed cursor after each key.
+            val text = inputPanelCached.preedit.toString()
+            val target = text.offsetByCodePoints(0, position.coerceIn(0, text.codePointCount(0, text.length)))
+            var cursor = inputPanelCached.preedit.cursor
+            val forward = cursor < target
+            for (step in 0..text.length) {
+                if (cursor < 0 || cursor == target) break
+                if ((forward && cursor > target) || (!forward && cursor < target)) break
+                sendKey(if (forward) FcitxKeyMapping.FcitxKey_Right else FcitxKeyMapping.FcitxKey_Left)
+                val next = inputPanelCached.preedit.cursor
+                if (next == cursor) break
+                cursor = next
+            }
+        }
+    }
     override suspend fun availableIme() =
         withFcitxContext { availableInputMethods() ?: emptyArray() }
 
@@ -457,8 +476,9 @@ class Fcitx(private val context: Context) : FcitxAPI, FcitxLifecycleOwner {
                     extDomains.toTypedArray()
                 )
             }
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                lifecycle.launchWhenReady {
+            lifecycle.launchWhenReady {
+                PersonalDefaults.enableBundledJapanese(FcitxApplication.getInstance().directBootAwareContext, this@Fcitx)
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
                     SubtypeManager.syncWith(enabledIme())
                 }
             }

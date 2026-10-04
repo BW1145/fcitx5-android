@@ -37,6 +37,10 @@ sealed class KeyAction {
 
     data class DeleteSelectionAction(val totalCnt: Int = 0) : KeyAction()
 
+    data object BeginBackspaceAction : KeyAction()
+
+    data object ClearBeforeCursorAction : KeyAction()
+
     data class PickerSwitchAction(val key: PickerWindow.Key? = null) : KeyAction()
 
     data object SpaceLongPressAction : KeyAction()

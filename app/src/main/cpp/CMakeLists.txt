@@ -93,6 +93,9 @@ install(DIRECTORY "${PREBUILT_DIR}/opencc/data/" DESTINATION "${FCITX_INSTALL_DA
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../../../plugin/rime/src/main/cpp"
                  "${CMAKE_CURRENT_BINARY_DIR}/bundled-rime")
 
+add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../../../plugin/anthy/src/main/cpp"
+                 "${CMAKE_CURRENT_BINARY_DIR}/bundled-anthy")
+
 # Install the pinned offline schema and dictionaries after Rime's base data.
 set(RIME_ICE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../../../third_party/rime-ice")
 install(DIRECTORY "${RIME_ICE_DIR}/"

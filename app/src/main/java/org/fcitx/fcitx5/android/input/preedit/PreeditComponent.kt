@@ -10,6 +10,7 @@ import org.fcitx.fcitx5.android.data.theme.Theme
 import org.fcitx.fcitx5.android.data.theme.ThemeManager
 import org.fcitx.fcitx5.android.input.broadcast.InputBroadcastReceiver
 import org.fcitx.fcitx5.android.input.dependency.context
+import org.fcitx.fcitx5.android.input.dependency.inputMethodService
 import org.fcitx.fcitx5.android.input.dependency.theme
 import org.mechdancer.dependency.Dependent
 import org.mechdancer.dependency.UniqueComponent
@@ -24,6 +25,7 @@ class PreeditComponent : UniqueComponent<PreeditComponent>(), Dependent, InputBr
 
     private val context by manager.context()
     private val theme by manager.theme()
+    private val service by manager.inputMethodService()
 
     val ui by lazy {
         val keyBorder = ThemeManager.prefs.keyBorder.getValue()
@@ -33,6 +35,9 @@ class PreeditComponent : UniqueComponent<PreeditComponent>(), Dependent, InputBr
             backgroundColor = bkgColor
             horizontalPadding = dp(8)
         }).apply {
+            onCursorRequested = { position ->
+                service.postFcitxJob { moveCursor(position) }
+            }
             // TODO make it customizable
             root.alpha = 0.8f
             root.visibility = View.INVISIBLE

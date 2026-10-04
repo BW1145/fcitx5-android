@@ -6,6 +6,7 @@ package org.fcitx.fcitx5.android.input.keyboard
 
 import android.content.Context
 import android.graphics.Rect
+import android.os.SystemClock
 import android.view.MotionEvent
 import androidx.annotation.CallSuper
 import androidx.annotation.DrawableRes
@@ -176,13 +177,30 @@ abstract class BaseKeyboard(
                     }
                 }
             } else if (def is BackspaceKey) {
+                var pressedAt = 0L
+                var cleared = false
                 swipeEnabled = true
+                swipeAfterRepeatEnabled = true
                 swipeRepeatEnabled = true
                 swipeThresholdX = selectionSwipeThreshold
-                swipeThresholdY = disabledSwipeThreshold
+                swipeThresholdY = inputSwipeThreshold
                 onGestureListener = OnGestureListener { view, event ->
                     when (event.type) {
+                        GestureType.Down -> {
+                            pressedAt = SystemClock.uptimeMillis()
+                            cleared = false
+                            onAction(KeyAction.BeginBackspaceAction)
+                            false
+                        }
                         GestureType.Move -> {
+                            val held = SystemClock.uptimeMillis() - pressedAt >= CustomGestureView.longPressDelay
+                            if (!cleared && held && event.totalY < 0 && event.totalY.absoluteValue > event.totalX.absoluteValue) {
+                                cleared = true
+                                onAction(KeyAction.ClearBeforeCursorAction)
+                                InputFeedbacks.hapticFeedback(view, true)
+                                return@OnGestureListener true
+                            }
+                            if (cleared || held) return@OnGestureListener cleared
                             val count = event.countX
                             if (count != 0) {
                                 onAction(KeyAction.MoveSelectionAction(count))
@@ -191,8 +209,8 @@ abstract class BaseKeyboard(
                             } else false
                         }
                         GestureType.Up -> {
-                            onAction(KeyAction.DeleteSelectionAction(event.totalX))
-                            false
+                            if (!cleared) onAction(KeyAction.DeleteSelectionAction(event.totalX))
+                            cleared
                         }
                         else -> false
                     }
