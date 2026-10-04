@@ -87,8 +87,15 @@ class PersonalRimeTest {
             val insertion = preedit.toString().lastIndexOf('o')
             assertTrue("Expected pinyin preedit: $preedit", insertion >= 0)
             fcitx.moveCursor(preedit.codePointCountUntil(insertion))
+            assertEquals(insertion, fcitx.inputPanelCached.preedit.cursor)
             fcitx.sendKey('a')
-            assertTrue(fcitx.getCandidates(0, 10).any { it.text == "你好" })
+            val edited = fcitx.inputPanelCached.preedit
+            assertEquals("nihao", edited.toString().replace(" ", ""))
+            assertEquals(edited.toString().lastIndexOf('o'), edited.cursor)
+            // Rime offers candidates for the portion before its caret.
+            fcitx.moveCursor(edited.codePointCountUntil(edited.length))
+            val editedCandidates = fcitx.getCandidates(0, 10).map { it.text }
+            assertTrue("Expected 你好 after editing: $editedCandidates", "你好" in editedCandidates)
             fcitx.reset()
             "shi".forEach { fcitx.sendKey(it) }
             assertTrue("More candidates must be available beyond the first row", fcitx.getCandidates(16, 16).isNotEmpty())
