@@ -23,6 +23,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
 import org.fcitx.fcitx5.android.core.Fcitx
 import org.fcitx.fcitx5.android.core.FcitxEvent
+import org.fcitx.fcitx5.android.core.FcitxKeyMapping
 import org.fcitx.fcitx5.android.core.FormattedText
 import org.fcitx.fcitx5.android.data.SavedContentStore
 import org.fcitx.fcitx5.android.data.UserDataManager
@@ -102,8 +103,20 @@ class PersonalRimeTest {
             fcitx.reset()
             fcitx.activateIme("anthy")
             "nihongo".forEach { fcitx.sendKey(it) }
+            assertEquals("にほんご", fcitx.inputPanelCached.preedit.toString())
             fcitx.sendKey(' ')
-            assertTrue("Japanese conversion failed", fcitx.getCandidates(0, 20).any { it.text == "日本語" })
+            assertEquals("日本語", fcitx.inputPanelCached.preedit.toString())
+            // Anthy opens its candidate list on the second conversion key press.
+            fcitx.sendKey(' ')
+            val japaneseCandidates = fcitx.getCandidates(0, 20).map { it.text }
+            val japaneseIndex = japaneseCandidates.indexOf("日本語")
+            assertTrue("Expected Japanese candidates: $japaneseCandidates", japaneseIndex >= 0)
+            val japaneseCommit = async(start = CoroutineStart.UNDISPATCHED) {
+                fcitx.eventFlow.filterIsInstance<FcitxEvent.CommitStringEvent>().first()
+            }
+            assertTrue(fcitx.select(japaneseIndex))
+            fcitx.sendKey(FcitxKeyMapping.FcitxKey_Return)
+            assertEquals("日本語", withTimeout(5_000) { japaneseCommit.await() }.data.text)
             fcitx.reset()
             fcitx.activateIme("rime")
 
