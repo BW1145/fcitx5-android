@@ -104,8 +104,15 @@ class PersonalRimeTest {
                 .resolve("data/rime/default.custom.yaml")
             val personalized = patch.readText() + "\n# personal configuration\n"
             patch.writeText(personalized)
+            // Simulate upgrading an existing installation with its own Rime patch.
+            fcitx.setEnabledIme(arrayOf("keyboard-us", "rime"))
+            (context.getExternalFilesDir(null) ?: context.filesDir)
+                .resolve("config/personal-anthy-enabled").delete()
             fcitx.stop()
             start()
+            withTimeout(10_000) {
+                while (fcitx.enabledIme().none { it.uniqueName == "anthy" }) delay(50)
+            }
             assertEquals(personalized, patch.readText())
             candidates("nihao") { "你好" in it }
         } finally {

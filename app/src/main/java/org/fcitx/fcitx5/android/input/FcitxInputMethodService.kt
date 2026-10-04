@@ -124,7 +124,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
 
     private val selection = CursorTracker()
     private val bulkDeletion = BulkDeletion()
-    val canRestoreDeletedContent get() = bulkDeletion.canRestore
+    val canRestoreDeletedContent get() = bulkDeletion.canRestore && selection.latest.isEmpty() && selection.latest.start == 0
 
     fun beginBackspaceGesture(hasPreedit: Boolean) {
         if (!hasPreedit) bulkDeletion.begin(currentInputConnection, selection.latest.start)

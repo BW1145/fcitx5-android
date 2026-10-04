@@ -194,7 +194,8 @@ abstract class BaseKeyboard(
                         }
                         GestureType.Move -> {
                             val held = SystemClock.uptimeMillis() - pressedAt >= CustomGestureView.longPressDelay
-                            if (!cleared && held && event.totalY < 0 && event.totalY.absoluteValue > event.totalX.absoluteValue) {
+                            if (!cleared && held && event.totalY < 0 &&
+                                event.totalY.absoluteValue * swipeThresholdY > event.totalX.absoluteValue * swipeThresholdX) {
                                 cleared = true
                                 onAction(KeyAction.ClearBeforeCursorAction)
                                 InputFeedbacks.hapticFeedback(view, true)
@@ -210,6 +211,7 @@ abstract class BaseKeyboard(
                         }
                         GestureType.Up -> {
                             if (!cleared) onAction(KeyAction.DeleteSelectionAction(event.totalX))
+                            onAction(KeyAction.EndBackspaceAction)
                             cleared
                         }
                         else -> false

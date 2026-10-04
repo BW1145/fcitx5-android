@@ -39,6 +39,8 @@ sealed class KeyAction {
 
     data object BeginBackspaceAction : KeyAction()
 
+    data object EndBackspaceAction : KeyAction()
+
     data object ClearBeforeCursorAction : KeyAction()
 
     data class PickerSwitchAction(val key: PickerWindow.Key? = null) : KeyAction()

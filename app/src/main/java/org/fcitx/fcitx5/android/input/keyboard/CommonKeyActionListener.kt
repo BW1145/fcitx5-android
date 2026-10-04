@@ -9,6 +9,7 @@ import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
 import org.fcitx.fcitx5.android.core.FcitxAPI
+import org.fcitx.fcitx5.android.core.FcitxKeyMapping
 import org.fcitx.fcitx5.android.daemon.launchOnReady
 import org.fcitx.fcitx5.android.data.prefs.AppPrefs
 import org.fcitx.fcitx5.android.input.broadcast.PreeditEmptyStateComponent
@@ -96,6 +97,7 @@ class CommonKeyActionListener :
                     backspaceStartedWithPreedit = !preeditState.isEmpty
                     service.beginBackspaceGesture(backspaceStartedWithPreedit)
                 }
+                is KeyAction.EndBackspaceAction -> backspaceStartedWithPreedit = false
                 is KeyAction.ClearBeforeCursorAction -> {
                     backspaceSwipeState = Stopped
                     val preeditOnly = backspaceStartedWithPreedit
@@ -107,8 +109,13 @@ class CommonKeyActionListener :
                 is FcitxKeyAction -> service.postFcitxJob {
                     sendKey(action.act, action.states.states, action.code)
                 }
-                is SymAction -> service.postFcitxJob {
-                    sendKey(action.sym, action.states)
+                is SymAction -> {
+                    val preeditOnly = backspaceStartedWithPreedit && action.sym.sym == FcitxKeyMapping.FcitxKey_BackSpace
+                    service.postFcitxJob {
+                        if (!preeditOnly || clientPreeditCached.isNotEmpty() || inputPanelCached.preedit.isNotEmpty()) {
+                            sendKey(action.sym, action.states)
+                        }
+                    }
                 }
                 is CommitAction -> service.postFcitxJob {
                     commitAndReset()
