@@ -97,6 +97,7 @@ jobs:
           name: rime-runtime-test-results
           path: |
             app/build/reports/androidTests/connected/
+            app/build/reports/androidTests/personal-native/
             app/build/outputs/androidTest-results/connected/
 
   release:
