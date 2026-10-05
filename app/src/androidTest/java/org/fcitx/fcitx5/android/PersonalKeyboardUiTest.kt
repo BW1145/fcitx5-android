@@ -41,8 +41,8 @@ class PersonalKeyboardUiTest {
         .filter { it.type == AccessibilityWindowInfo.TYPE_INPUT_METHOD }
         .flatMap { it.root?.let(::nodes) ?: emptyList() }
 
-    private fun await(description: String, predicate: () -> Boolean) {
-        val end = SystemClock.uptimeMillis() + 30_000
+    private fun await(description: String, timeout: Long = 30_000, predicate: () -> Boolean) {
+        val end = SystemClock.uptimeMillis() + timeout
         while (!predicate()) {
             assertTrue("$description. IME text: ${imeNodes().mapNotNull { it.text }}", SystemClock.uptimeMillis() < end)
             SystemClock.sleep(100)
@@ -80,8 +80,13 @@ class PersonalKeyboardUiTest {
     }
 
     private fun screenshot(name: String) {
-        val file = instrumentation.targetContext.cacheDir.resolve("$name.png")
-        file.outputStream().use { automation.takeScreenshot()?.compress(Bitmap.CompressFormat.PNG, 100, it) }
+        val bitmap = requireNotNull(automation.takeScreenshot())
+        val descriptors = automation.executeShellCommandRw("dd of=/data/local/tmp/fcitx5-$name.png")
+        android.os.ParcelFileDescriptor.AutoCloseOutputStream(descriptors[1]).use {
+            assertTrue(bitmap.compress(Bitmap.CompressFormat.PNG, 100, it))
+        }
+        android.os.ParcelFileDescriptor.AutoCloseInputStream(descriptors[0]).use { it.readBytes() }
+        bitmap.recycle()
     }
 
     @Test
@@ -100,6 +105,9 @@ class PersonalKeyboardUiTest {
         try {
             await("Keyboard is visible") { imeNodes().any { it.viewIdResourceName?.endsWith(":id/button_space") == true } }
             fcitx.runOnReady { reset(); activateIme("rime") }
+            await("Rime Ice has finished its initial deployment", timeout = 180_000) {
+                fcitx.runImmediately { inputMethodEntryCached.subMode.name == "雾凇拼音" }
+            }
             type("niho")
             await("Pinyin bar is visible") { imeNodes().any { it.text?.toString()?.startsWith("ni ho") == true } }
             val preedit = fcitx.runOnReady { inputPanelCached.preedit }
