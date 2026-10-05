@@ -21,8 +21,7 @@ sealed class StatusAreaEntry(
             ReloadConfig,
             Keyboard,
             ThemeList,
-            TextEditing,
-            RestoreDeleted
+            TextEditing
         }
     }
 

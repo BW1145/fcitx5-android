@@ -124,11 +124,6 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
 
     private val selection = CursorTracker()
     private val bulkDeletion = BulkDeletion()
-    val canRestoreDeletedContent get() = bulkDeletion.canRestore && selection.latest.isEmpty() && selection.latest.start == 0
-
-    fun beginBackspaceGesture(hasPreedit: Boolean) {
-        if (!hasPreedit) bulkDeletion.begin(currentInputConnection, selection.latest.start)
-    }
 
     fun clearBeforeCursor() {
         val ic = currentInputConnection ?: return
@@ -136,15 +131,9 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         if (selection.latest.isNotEmpty()) ic.setSelection(cursor, cursor)
         if (bulkDeletion.clear(ic, cursor)) {
             selection.predict(0)
-            Toast.makeText(this, R.string.bulk_delete_done, Toast.LENGTH_SHORT).show()
         } else {
             Toast.makeText(this, R.string.bulk_delete_unavailable, Toast.LENGTH_SHORT).show()
         }
-    }
-
-    fun restoreDeletedContent() {
-        val ic = currentInputConnection ?: return
-        bulkDeletion.restore(ic, selection.latest.start)?.let { selection.predict(it) }
     }
 
     val currentInputSelection: CursorRange
@@ -261,6 +250,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
             }
             is FcitxEvent.KeyEvent -> event.data.let event@{
                 if (it.states.virtual) {
+                    if (it.up) return@event
                     // KeyEvent from virtual keyboard
                     when (it.sym.sym) {
                         FcitxKeyMapping.FcitxKey_BackSpace -> handleBackspaceKey()
@@ -447,7 +437,6 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
 
     fun commitText(text: String, cursor: Int = -1) {
         val ic = currentInputConnection ?: return
-        if (text.isNotEmpty()) bulkDeletion.reset()
         // when composing text equals commit content, finish composing text as-is
         if (composing.isNotEmpty() && composingText.toString() == text) {
             val c = if (cursor == -1) text.length else cursor
@@ -629,7 +618,13 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
             outInsets.apply {
                 contentTopInsets = inputViewLocation[1]
                 visibleTopInsets = inputViewLocation[1]
-                touchableInsets = Insets.TOUCHABLE_INSETS_VISIBLE
+                touchableInsets = Insets.TOUCHABLE_INSETS_REGION
+                touchableRegion.set(0, inputViewLocation[1], decorView.width, decorView.height)
+                inputView?.preeditView?.takeIf { it.visibility == View.VISIBLE }?.let { preedit ->
+                    preedit.getLocationInWindow(inputViewLocation)
+                    touchableRegion.union(inputViewLocation[0], inputViewLocation[1],
+                        inputViewLocation[0] + preedit.width, inputViewLocation[1] + preedit.height)
+                }
             }
         } else {
             val n = decorView.findViewById<View>(android.R.id.navigationBarBackground)?.height ?: 0
@@ -756,7 +751,6 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         // initialSel{Start,End} is outdated. but it's the client app's responsibility to send
         // right cursor position, try to workaround this would simply introduce more bugs.
         selection.resetTo(attribute.initialSelStart, attribute.initialSelEnd)
-        bulkDeletion.reset()
         resetComposingState()
         val flags = CapabilityFlags.fromEditorInfo(attribute)
         capabilityFlags = flags
@@ -1091,7 +1085,6 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     }
 
     override fun onFinishInput() {
-        bulkDeletion.reset()
         Timber.d("onFinishInput")
         postFcitxJob {
             focus(false)

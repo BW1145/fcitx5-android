@@ -32,7 +32,6 @@ import org.fcitx.fcitx5.android.input.status.StatusAreaEntry.Android.Type.Keyboa
 import org.fcitx.fcitx5.android.input.status.StatusAreaEntry.Android.Type.ReloadConfig
 import org.fcitx.fcitx5.android.input.status.StatusAreaEntry.Android.Type.ThemeList
 import org.fcitx.fcitx5.android.input.status.StatusAreaEntry.Android.Type.TextEditing
-import org.fcitx.fcitx5.android.input.status.StatusAreaEntry.Android.Type.RestoreDeleted
 import org.fcitx.fcitx5.android.input.wm.InputWindow
 import org.fcitx.fcitx5.android.input.wm.InputWindowManager
 import org.fcitx.fcitx5.android.utils.AppUtil
@@ -157,10 +156,6 @@ class StatusAreaWindow : InputWindow.ExtendedInputWindow<StatusAreaWindow>(),
                         Keyboard -> AppUtil.launchMainToKeyboard(context)
                         ThemeList -> AppUtil.launchMainToThemeList(context)
                         TextEditing -> windowManager.attachWindow(TextEditingWindow())
-                        RestoreDeleted -> {
-                            service.restoreDeletedContent()
-                            windowManager.attachWindow(org.fcitx.fcitx5.android.input.keyboard.KeyboardWindow)
-                        }
                     }
                 }
             }
@@ -182,12 +177,8 @@ class StatusAreaWindow : InputWindow.ExtendedInputWindow<StatusAreaWindow>(),
     }
 
     override fun onStatusAreaUpdate(actions: Array<Action>) {
-        val restore = if (service.canRestoreDeletedContent) arrayOf(
-            StatusAreaEntry.Android(context.getString(R.string.restore_deleted_content), R.drawable.ic_baseline_undo_24, RestoreDeleted)
-        ) else emptyArray()
         adapter.entries = arrayOf(
             *staticEntries,
-            *restore,
             *Array(actions.size) { StatusAreaEntry.fromAction(actions[it]) }
         )
     }

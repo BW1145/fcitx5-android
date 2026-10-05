@@ -95,7 +95,6 @@ class CommonKeyActionListener :
                 is KeyAction.BeginBackspaceAction -> {
                     backspaceSwipeState = Stopped
                     backspaceStartedWithPreedit = !preeditState.isEmpty
-                    service.beginBackspaceGesture(backspaceStartedWithPreedit)
                 }
                 is KeyAction.EndBackspaceAction -> backspaceStartedWithPreedit = false
                 is KeyAction.ClearBeforeCursorAction -> {
@@ -108,12 +107,18 @@ class CommonKeyActionListener :
                 }
                 is FcitxKeyAction -> service.postFcitxJob {
                     sendKey(action.act, action.states.states, action.code)
+                    if (inputMethodEntryCached.uniqueName == "anthy") {
+                        sendKey(action.act, action.states.states, action.code, up = true)
+                    }
                 }
                 is SymAction -> {
                     val preeditOnly = backspaceStartedWithPreedit && action.sym.sym == FcitxKeyMapping.FcitxKey_BackSpace
                     service.postFcitxJob {
                         if (!preeditOnly || clientPreeditCached.isNotEmpty() || inputPanelCached.preedit.isNotEmpty()) {
                             sendKey(action.sym, action.states)
+                            if (inputMethodEntryCached.uniqueName == "anthy") {
+                                sendKey(action.sym, action.states, up = true)
+                            }
                         }
                     }
                 }

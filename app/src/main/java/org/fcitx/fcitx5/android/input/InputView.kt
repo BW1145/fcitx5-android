@@ -202,6 +202,7 @@ class InputView(
     }
 
     val keyboardView: View
+    val preeditView: View get() = preedit.ui.root
 
     init {
         // MUST call before any operation

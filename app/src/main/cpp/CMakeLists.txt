@@ -95,6 +95,7 @@ add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../../../plugin/rime/src/main/c
 
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../../../plugin/anthy/src/main/cpp"
                  "${CMAKE_CURRENT_BINARY_DIR}/bundled-anthy")
+include(anthy-typing-candidates.cmake)
 
 # Install the pinned offline schema and dictionaries after Rime's base data.
 set(RIME_ICE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../../../third_party/rime-ice")

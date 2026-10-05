@@ -90,7 +90,14 @@ jobs:
           arch: x86_64
           target: google_apis
           disable-animations: true
-          script: ./gradlew -PbuildABI=x86_64 -Pandroid.testInstrumentationRunnerArguments.class=org.fcitx.fcitx5.android.PersonalRimeTest :app:connectedDebugAndroidTest
+          script: |
+            result=0
+            ./gradlew -PbuildABI=x86_64 -Pandroid.testInstrumentationRunnerArguments.class=org.fcitx.fcitx5.android.PersonalRimeTest,org.fcitx.fcitx5.android.PersonalKeyboardUiTest :app:connectedDebugAndroidTest || result=$?
+            mkdir -p app/build/reports/androidTests/connected/screens
+            for image in pinyin-edit japanese-predictions keyboard-final; do
+              adb exec-out run-as org.fcitx.fcitx5.android.bw1145.debug cat "cache/$image.png" > "app/build/reports/androidTests/connected/screens/$image.png" || true
+            done
+            exit "$result"
       - uses: actions/upload-artifact@v7
         if: always()
         with:
@@ -116,8 +123,8 @@ jobs:
         run: |
           cat > notes.md <<'EOF'
           小企鹅输入法定制版，适用于 arm64 安卓设备，内置 Rime、雾凇全拼和 Anthy 日语。
-          支持点击修改待选拼音、横向滑动候选词、长按删除键后上滑清空及恢复正文、常用内容面板。
-          常用内容入口位于剪贴板旁边；光标控制和恢复删除位于三个点菜单。
+          支持点击修改待选拼音、横向滑动候选词、长按删除键后上滑清空、常用内容面板。
+          常用内容入口位于剪贴板旁边；光标控制位于三个点菜单。
           覆盖安装保留已有配置；升级后日语自动加入输入法列表，可通过语言切换键选择。
           安装包已通过签名、离线权限、词库完整性和安卓模拟器输入验证。
           对应源码和依赖版本记录在本发布标签中。

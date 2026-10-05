@@ -10,11 +10,21 @@ internal object PersonalDefaults {
     suspend fun enableBundledJapanese(context: Context, api: FcitxAPI) {
         val root = context.getExternalFilesDir(null) ?: context.filesDir
         val marker = root.resolve("config/personal-anthy-enabled")
-        if (marker.exists() || api.availableIme().none { it.uniqueName == "anthy" }) return
-        val enabled = api.enabledIme().map { it.uniqueName }
-        if ("anthy" !in enabled) api.setEnabledIme((enabled + "anthy").toTypedArray())
-        marker.parentFile?.mkdirs()
-        marker.writeText("1\n", Charsets.UTF_8)
+        if (api.availableIme().none { it.uniqueName == "anthy" }) return
+        if (!marker.exists()) {
+            val enabled = api.enabledIme().map { it.uniqueName }
+            if ("anthy" !in enabled) api.setEnabledIme((enabled + "anthy").toTypedArray())
+            marker.parentFile?.mkdirs()
+            marker.writeText("1\n", Charsets.UTF_8)
+        }
+        val candidatesMarker = root.resolve("config/personal-anthy-candidates-v1")
+        if (!candidatesMarker.exists()) {
+            val config = api.getAddonConfig("anthy")["cfg"]
+            config["General"]["PredictOnInput"].value = "True"
+            config["General"]["NTriggersToShowCandWin"].value = "1"
+            api.setAddonConfig("anthy", config)
+            candidatesMarker.writeText("1\n", Charsets.UTF_8)
+        }
     }
 
     fun install(context: Context) {

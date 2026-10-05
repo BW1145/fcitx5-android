@@ -102,12 +102,14 @@ class PersonalRimeTest {
             assertTrue("More candidates must be available beyond the first row", fcitx.getCandidates(16, 16).isNotEmpty())
             fcitx.reset()
             fcitx.activateIme("anthy")
-            "nihongo".forEach { fcitx.sendKey(it) }
+            "nihongo".forEach {
+                fcitx.sendKey(it)
+                fcitx.sendKey(it, up = true)
+            }
             assertEquals("にほんご", fcitx.inputPanelCached.preedit.toString())
+            assertTrue("Japanese candidates must be visible while typing", fcitx.getCandidates(0, 20).isNotEmpty())
             fcitx.sendKey(' ')
             assertEquals("日本語", fcitx.inputPanelCached.preedit.toString())
-            // Anthy opens its candidate list on the second conversion key press.
-            fcitx.sendKey(' ')
             val japaneseCandidates = fcitx.getCandidates(0, 20).map { it.text }
             val japaneseIndex = japaneseCandidates.indexOf("日本語")
             assertTrue("Expected Japanese candidates: $japaneseCandidates", japaneseIndex >= 0)
@@ -128,11 +130,19 @@ class PersonalRimeTest {
             fcitx.setEnabledIme(arrayOf("keyboard-us", "rime"))
             (context.getExternalFilesDir(null) ?: context.filesDir)
                 .resolve("config/personal-anthy-enabled").delete()
+            val japaneseConfig = fcitx.getAddonConfig("anthy")["cfg"]
+            japaneseConfig["General"]["PredictOnInput"].value = "False"
+            japaneseConfig["General"]["NTriggersToShowCandWin"].value = "2"
+            fcitx.setAddonConfig("anthy", japaneseConfig)
+            (context.getExternalFilesDir(null) ?: context.filesDir)
+                .resolve("config/personal-anthy-candidates-v1").delete()
             fcitx.stop()
             start()
             withTimeout(10_000) {
-                while (fcitx.enabledIme().none { it.uniqueName == "anthy" }) delay(50)
+                while (fcitx.enabledIme().none { it.uniqueName == "anthy" } ||
+                    fcitx.getAddonConfig("anthy")["cfg"]["General"]["PredictOnInput"].value != "True") delay(50)
             }
+            assertEquals("1", fcitx.getAddonConfig("anthy")["cfg"]["General"]["NTriggersToShowCandWin"].value)
             assertEquals(personalized, patch.readText())
             candidates("nihao") { "你好" in it }
         } finally {
@@ -141,7 +151,7 @@ class PersonalRimeTest {
     }
 
     @Test
-    fun bulkDeletionPreservesSuffixAndRestoresRepeatedDeletion() {
+    fun bulkDeletionPreservesSuffixAfterRepeatedDeletion() {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         instrumentation.runOnMainSync {
             val editor = EditText(instrumentation.targetContext)
@@ -153,13 +163,9 @@ class PersonalRimeTest {
                 override fun getEditable() = editor.text
             }
             val deletion = BulkDeletion()
-            deletion.begin(connection, cursor)
             connection.deleteSurroundingText(2, 0)
             assertTrue(deletion.clear(connection, cursor - 2))
             assertEquals("后面保留", editor.text.toString())
-            assertEquals(cursor, deletion.restore(connection, 0))
-            assertEquals(text, editor.text.toString())
-            assertFalse(deletion.canRestore)
         }
     }
 

@@ -14,7 +14,7 @@ android {
 
     defaultConfig {
         applicationId = "org.fcitx.fcitx5.android.bw1145"
-        versionCode = 122
+        versionCode = 123
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         @Suppress("UnstableApiUsage")

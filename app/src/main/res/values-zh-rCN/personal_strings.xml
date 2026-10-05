@@ -6,7 +6,5 @@
     <string name="saved_content_text_hint">要保存的内容</string>
     <string name="saved_content_move_up">上移</string>
     <string name="saved_content_move_down">下移</string>
-    <string name="restore_deleted_content">恢复刚才删除的文字</string>
     <string name="bulk_delete_unavailable">当前应用无法提供光标前的完整文字。</string>
-    <string name="bulk_delete_done">已清空，可在三个点菜单中恢复。</string>
 </resources>
