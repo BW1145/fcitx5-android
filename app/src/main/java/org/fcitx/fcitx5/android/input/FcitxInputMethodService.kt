@@ -622,8 +622,8 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
                 touchableRegion.set(0, inputViewLocation[1], decorView.width, decorView.height)
                 inputView?.preeditView?.takeIf { it.visibility == View.VISIBLE }?.let { preedit ->
                     preedit.getLocationInWindow(inputViewLocation)
-                    touchableRegion.union(inputViewLocation[0], inputViewLocation[1],
-                        inputViewLocation[0] + preedit.width, inputViewLocation[1] + preedit.height)
+                    touchableRegion.union(android.graphics.Rect(inputViewLocation[0], inputViewLocation[1],
+                        inputViewLocation[0] + preedit.width, inputViewLocation[1] + preedit.height))
                 }
             }
         } else {
