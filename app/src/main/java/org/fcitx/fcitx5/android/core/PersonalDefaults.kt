@@ -29,7 +29,10 @@ internal object PersonalDefaults {
 
     fun install(context: Context) {
         val root = context.getExternalFilesDir(null) ?: context.filesDir
-        for (path in listOf("config/profile", "config/config", "data/rime/default.custom.yaml")) {
+        for (path in listOf(
+            "config/profile", "config/config", "data/rime/default.custom.yaml",
+            "data/rime/rime_ice.custom.yaml"
+        )) {
             val file = root.resolve(path)
             if (file.exists()) continue
             file.parentFile?.mkdirs()

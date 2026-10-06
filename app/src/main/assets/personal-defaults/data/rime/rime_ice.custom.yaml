@@ -1,0 +1,9 @@
+patch:
+  translator/enable_correction: true
+  speller/algebra/+:
+    - derive/ang$/an/
+    - derive/an$/ang/
+    - derive/eng$/en/
+    - derive/en$/eng/
+    - derive/ing$/in/
+    - derive/in$/ing/
