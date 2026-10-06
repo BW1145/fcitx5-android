@@ -105,7 +105,14 @@ class PersonalKeyboardUiTest {
         val fcitx = FcitxDaemon.connect(javaClass.name)
         try {
             await("Keyboard is visible") { imeNodes().any { it.viewIdResourceName?.endsWith(":id/button_space") == true } }
-            fcitx.runOnReady { reset(); activateIme("rime") }
+            fcitx.runOnReady { }
+            await("Initial keyboard engine is active") {
+                fcitx.runImmediately { inputMethodEntryCached.uniqueName in listOf("keyboard-us", "rime") }
+            }
+            // Use the keyboard's ordered job queue after Android selects its initial subtype.
+            if (fcitx.runImmediately { inputMethodEntryCached.uniqueName } != "rime") {
+                key(R.id.button_lang)
+            }
             await("Rime Ice has finished its initial deployment", timeout = 180_000) {
                 fcitx.runImmediately { inputMethodEntryCached.subMode.name == "雾凇拼音" }
             }

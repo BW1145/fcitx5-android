@@ -34,8 +34,7 @@ import org.fcitx.fcitx5.android.input.keyboard.CustomGestureView
 import org.fcitx.fcitx5.android.input.keyboard.KeyAction
 import org.fcitx.fcitx5.android.input.keyboard.KeyActionListener
 import org.fcitx.fcitx5.android.input.keyboard.TextKeyboard
-import java.io.ByteArrayInputStream
-import java.io.ByteArrayOutputStream
+import java.io.File
 import java.util.zip.ZipInputStream
 import org.fcitx.fcitx5.android.data.prefs.AppPrefs
 import org.junit.Assert.assertEquals
@@ -232,14 +231,15 @@ class PersonalRimeTest {
     fun savedContentCanBeEditedOrderedAndRestoredFromBackup() {
         val first = SavedContentStore.put(null, "地址", "示例地址\n第二行")
         val second = SavedContentStore.put(null, "回复", "稍后回复")
+        val backup = File.createTempFile("saved-content-backup-", ".zip",
+            InstrumentationRegistry.getInstrumentation().targetContext.cacheDir)
         try {
             SavedContentStore.put(first.id, "新地址", "修改后的内容")
             SavedContentStore.move(second.id, -1)
             assertEquals(second.id, SavedContentStore.load().first().id)
-            val backup = ByteArrayOutputStream()
-            UserDataManager.export(backup).getOrThrow()
+            backup.outputStream().use { UserDataManager.export(it).getOrThrow() }
             var savedFileFound = false
-            ZipInputStream(ByteArrayInputStream(backup.toByteArray())).use { zip ->
+            ZipInputStream(backup.inputStream()).use { zip ->
                 while (true) {
                     val entry = zip.nextEntry ?: break
                     if (entry.name == "external/data/saved-content.json") savedFileFound = true
@@ -248,10 +248,11 @@ class PersonalRimeTest {
             assertTrue(savedFileFound)
             SavedContentStore.delete(first.id)
             SavedContentStore.delete(second.id)
-            UserDataManager.import(ByteArrayInputStream(backup.toByteArray())).getOrThrow()
+            backup.inputStream().use { UserDataManager.import(it).getOrThrow() }
             assertEquals("修改后的内容", SavedContentStore.load().find { it.id == first.id }?.text)
             assertEquals(second.id, SavedContentStore.load().first().id)
         } finally {
+            backup.delete()
             SavedContentStore.delete(first.id)
             SavedContentStore.delete(second.id)
         }
