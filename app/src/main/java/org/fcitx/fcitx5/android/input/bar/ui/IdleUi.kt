@@ -73,6 +73,7 @@ class IdleUi(
 
     val menuButton = ToolButton(ctx, R.drawable.ic_baseline_expand_more_24, theme).apply {
         iconRotation = menuButtonRotation
+        contentDescription = ctx.getString(R.string.expand_toolbar)
     }
 
     val hideKeyboardButton = ToolButton(ctx, R.drawable.ic_baseline_arrow_drop_down_24, theme)
