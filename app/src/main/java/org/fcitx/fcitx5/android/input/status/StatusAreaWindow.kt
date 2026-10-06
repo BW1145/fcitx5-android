@@ -9,6 +9,8 @@ import android.view.View
 import android.widget.PopupMenu
 import androidx.core.text.buildSpannedString
 import androidx.core.text.color
+import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.launch
 import org.fcitx.fcitx5.android.R
 import org.fcitx.fcitx5.android.core.Action
 import org.fcitx.fcitx5.android.daemon.FcitxConnection

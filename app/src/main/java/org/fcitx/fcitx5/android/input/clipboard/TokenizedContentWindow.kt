@@ -48,4 +48,6 @@ class TokenizedContentWindow(private val text:String):InputWindow.ExtendedInputW
         setText(R.string.insert_selected)
         setOnClickListener { val value=selectionText();if(value.isNotEmpty()) { service.commitText(value);wm.attachWindow(KeyboardWindow) } }
     }
+    override fun onAttached() {}
+    override fun onDetached() {}
 }
