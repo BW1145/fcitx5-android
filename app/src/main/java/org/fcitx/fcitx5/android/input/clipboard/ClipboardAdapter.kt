@@ -111,6 +111,8 @@ abstract class ClipboardAdapter(
                 menu.item(R.string.edit, R.drawable.ic_baseline_edit_24, iconTint) {
                     onEdit(entry.id)
                 }
+                menu.add(R.string.split_content).setOnMenuItemClickListener { onSplit(entry);true }
+                if(entry.text.startsWith("https://") || entry.text.startsWith("http://")) menu.add(R.string.clean_link_paste).setOnMenuItemClickListener { onCleanLink(entry);true }
                 menu.item(R.string.share, R.drawable.ic_baseline_share_24, iconTint) {
                     onShare(entry)
                 }
@@ -138,6 +140,8 @@ abstract class ClipboardAdapter(
         popupMenu = null
     }
 
+    abstract fun onSplit(entry: ClipboardEntry)
+    abstract fun onCleanLink(entry: ClipboardEntry)
     abstract fun onPaste(entry: ClipboardEntry)
 
     abstract fun onPin(id: Int)

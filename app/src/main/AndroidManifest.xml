@@ -47,6 +47,8 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.FcitxAppTheme"
         tools:targetApi="33">
+        <activity android:name=".ui.main.KeyMacroActivity" android:configChanges="orientation|screenSize" android:exported="false" />
+        <activity android:name=".ui.main.ToolbarActivity" android:exported="false" />
         <activity
             android:name=".ui.setup.SetupActivity"
             android:exported="false"

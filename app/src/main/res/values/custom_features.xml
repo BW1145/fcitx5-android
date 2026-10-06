@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="key_macros">Keys and macros</string>
+    <string name="macro_add">Add binding</string>
+    <string name="macro_add_step">Add action</string>
+    <string name="macro_restore">Restore defaults</string>
+    <string name="macro_restore_confirm">Restore the default key bindings?</string>
+    <string name="macro_help">Choose a key and a gesture, then add actions in order. The default backspace upward gesture clears composition, or text before the cursor when there is no composition. Hold the delete key before swiping up.</string>
+    <string name="macro_step_text">Text, or key name such as ENTER, DPAD_LEFT, A</string>
+    <string name="macro_invalid_key">Unrecognized key name</string>
+    <string name="macro_backspace">Backspace</string>
+    <string name="macro_space">Space</string>
+    <string name="macro_return">Enter</string>
+    <string name="macro_caps">Shift</string>
+    <string name="macro_language">Language</string>
+    <string name="letter_size">26 letter label size</string>
+    <string name="toolbar_layout">Toolbar layout</string>
+    <string name="toolbar_help">Checked items appear on the toolbar in this order. Other items appear in More. Use the arrows to change the order.</string>
+    <string name="content_search">Search content</string>
+    <string name="search_empty">No matching content</string>
+    <string name="split_content">Select words</string>
+    <string name="insert_selected">Insert selection</string>
+    <string name="clean_link_paste">Clean link and paste</string>
+    <string-array name="macro_triggers">
+        <item>Tap</item>
+        <item>Hold</item>
+        <item>Swipe up</item>
+        <item>Swipe down</item>
+        <item>Swipe left</item>
+        <item>Swipe right</item>
+    </string-array>
+    <string-array name="macro_actions">
+        <item>Insert text</item>
+        <item>Press key</item>
+        <item>Select all</item>
+        <item>Copy</item>
+        <item>Paste</item>
+        <item>Cut</item>
+        <item>Undo</item>
+        <item>Redo</item>
+        <item>Clear composition / text before cursor</item>
+    </string-array>
+    <string name="macro_symbols">Symbols key</string>
+</resources>

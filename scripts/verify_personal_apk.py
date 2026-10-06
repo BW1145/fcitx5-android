@@ -25,10 +25,21 @@ with zipfile.ZipFile(apk) as archive:
         "assets/usr/share/rime-data/rime-ice.LICENSE",
         "assets/personal-defaults/config/profile",
         "assets/personal-defaults/data/rime/default.custom.yaml",
+        "assets/personal-defaults/data/rime/personal_ice.yaml",
+        "assets/personal-defaults/data/rime/zh-hans-t-essay-bgw-compact.gram",
+        "assets/personal-defaults/data/rime/predict.db",
+        "assets/usr/share/rime-data/personal_ice.yaml",
+        "assets/usr/share/rime-data/lua/predict_simplify.lua",
+        "assets/usr/share/opencc/s2t.json",
+        "assets/usr/share/opencc/t2s.json",
+        "assets/clearurls-rules.json",
     }
     assert required <= names, f"Missing APK entries: {required - names}"
     assert any(n.startswith("assets/usr/share/rime-data/cn_dicts/") for n in names)
     assert any(n.startswith("assets/usr/share/rime-data/en_dicts/") for n in names)
+    lock = json.loads(Path("scripts/personal-rime-dependencies.json").read_text())
+    for item in lock["data"]:
+        assert hashlib.sha256(archive.read("assets/personal-defaults/data/rime/" + item["name"])).hexdigest() == item["sha256"]
     descriptor = json.loads(archive.read("assets/descriptor.json"))
     assert descriptor["symlinks"]["usr/share/rime-data/opencc"] == "usr/share/opencc"
     for name in required:

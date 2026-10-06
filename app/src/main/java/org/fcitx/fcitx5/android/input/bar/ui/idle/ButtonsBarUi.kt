@@ -5,7 +5,6 @@
 package org.fcitx.fcitx5.android.input.bar.ui.idle
 
 import android.content.Context
-import androidx.annotation.DrawableRes
 import com.google.android.flexbox.AlignItems
 import com.google.android.flexbox.FlexboxLayout
 import com.google.android.flexbox.JustifyContent
@@ -23,29 +22,16 @@ class ButtonsBarUi(override val ctx: Context, private val theme: Theme) : Ui {
         justifyContent = JustifyContent.SPACE_AROUND
     }
 
-    private fun toolButton(@DrawableRes icon: Int) = ToolButton(ctx, icon, theme).also {
-        val size = ctx.dp(40)
-        root.addView(it, FlexboxLayout.LayoutParams(size, size))
+    var onAction: ((org.fcitx.fcitx5.android.input.status.StatusAreaEntry.Android.Type) -> Unit)? = null
+    val moreButton = ToolButton(ctx,R.drawable.ic_baseline_more_horiz_24,theme).apply { contentDescription=ctx.getString(R.string.status_area) }
+    fun refresh() {
+        root.removeAllViews()
+        val size=ctx.dp(40)
+        org.fcitx.fcitx5.android.data.ToolbarLayout.main().forEach { type ->
+            val entry=org.fcitx.fcitx5.android.input.status.ToolbarActions.entry(ctx,type)
+            root.addView(ToolButton(ctx,entry.icon,theme).apply { contentDescription=entry.label;setOnClickListener { onAction?.invoke(type) } }, FlexboxLayout.LayoutParams(size,size).apply { flexShrink=1f })
+        }
+        root.addView(moreButton,FlexboxLayout.LayoutParams(size,size))
     }
-
-    val undoButton = toolButton(R.drawable.ic_baseline_undo_24).apply {
-        contentDescription = ctx.getString(R.string.undo)
-    }
-
-    val redoButton = toolButton(R.drawable.ic_baseline_redo_24).apply {
-        contentDescription = ctx.getString(R.string.redo)
-    }
-
-    val savedContentButton = toolButton(R.drawable.ic_saved_content).apply {
-        contentDescription = ctx.getString(R.string.saved_content)
-    }
-
-    val clipboardButton = toolButton(R.drawable.ic_clipboard).apply {
-        contentDescription = ctx.getString(R.string.clipboard)
-    }
-
-    val moreButton = toolButton(R.drawable.ic_baseline_more_horiz_24).apply {
-        contentDescription = ctx.getString(R.string.status_area)
-    }
-
+    init { refresh() }
 }

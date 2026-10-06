@@ -156,6 +156,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     private val ignoreSystemCursor by prefs.advanced.ignoreSystemCursor
 
     private val recreateInputViewPrefs: Array<ManagedPreference<*>> = arrayOf(
+        prefs.internal.customUiRevision,
         prefs.keyboard.expandKeypressArea,
         prefs.advanced.disableAnimation,
         prefs.advanced.ignoreSystemWindowInsets,
@@ -243,7 +244,18 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         lastKnownConfig = resources.configuration
     }
 
+    fun closeContentSearch() { inputView?.contentSearch?.takeIf { it.active }?.close() }
+    fun openContentSearch(saved: Boolean) { inputView?.contentSearch?.open(saved) }
+    fun handleSearchAction(action: org.fcitx.fcitx5.android.input.keyboard.KeyAction): Boolean {
+        val search=inputView?.contentSearch?.takeIf { it.active } ?: return false
+        return when(action) {
+            is org.fcitx.fcitx5.android.input.keyboard.KeyAction.CommitAction -> { search.commit(action.text);true }
+            is org.fcitx.fcitx5.android.input.keyboard.KeyAction.MacroAction -> { if(action.steps.any { it.action=="clear" }) search.clear();true }
+            else -> false
+        }
+    }
     private fun handleFcitxEvent(event: FcitxEvent<*>) {
+        if(inputView?.contentSearch?.handle(event)==true) return
         when (event) {
             is FcitxEvent.CommitStringEvent -> {
                 commitText(event.data.text, event.data.cursor)
@@ -436,6 +448,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     }
 
     fun commitText(text: String, cursor: Int = -1) {
+        inputView?.contentSearch?.takeIf { it.active }?.let { it.commit(text,cursor); return }
         val ic = currentInputConnection ?: return
         // when composing text equals commit content, finish composing text as-is
         if (composing.isNotEmpty() && composingText.toString() == text) {
@@ -620,6 +633,10 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
                 visibleTopInsets = inputViewLocation[1]
                 touchableInsets = Insets.TOUCHABLE_INSETS_REGION
                 touchableRegion.set(0, inputViewLocation[1], decorView.width, decorView.height)
+                inputView?.contentSearch?.root?.takeIf { it.visibility == View.VISIBLE }?.let { panel ->
+                    panel.getLocationInWindow(inputViewLocation)
+                    touchableRegion.union(android.graphics.Rect(inputViewLocation[0],inputViewLocation[1],inputViewLocation[0]+panel.width,inputViewLocation[1]+panel.height))
+                }
                 inputView?.preeditView?.takeIf { it.visibility == View.VISIBLE }?.let { preedit ->
                     preedit.getLocationInWindow(inputViewLocation)
                     touchableRegion.union(android.graphics.Rect(inputViewLocation[0], inputViewLocation[1],
@@ -1069,6 +1086,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     }
 
     override fun onFinishInputView(finishingInput: Boolean) {
+        inputView?.contentSearch?.close()
         Timber.d("onFinishInputView: finishingInput=$finishingInput")
         decorLocationUpdated = false
         inputDeviceMgr.onFinishInputView()

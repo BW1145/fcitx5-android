@@ -7,14 +7,10 @@ package org.fcitx.fcitx5.android.input.status
 import android.os.Build
 import android.view.View
 import android.widget.PopupMenu
-import android.widget.Toast
 import androidx.core.text.buildSpannedString
 import androidx.core.text.color
-import androidx.lifecycle.lifecycleScope
-import kotlinx.coroutines.launch
 import org.fcitx.fcitx5.android.R
 import org.fcitx.fcitx5.android.core.Action
-import org.fcitx.fcitx5.android.core.SubtypeManager
 import org.fcitx.fcitx5.android.daemon.FcitxConnection
 import org.fcitx.fcitx5.android.daemon.launchOnReady
 import org.fcitx.fcitx5.android.data.prefs.AppPrefs
@@ -26,12 +22,6 @@ import org.fcitx.fcitx5.android.input.dependency.fcitx
 import org.fcitx.fcitx5.android.input.dependency.inputMethodService
 import org.fcitx.fcitx5.android.input.dependency.theme
 import org.fcitx.fcitx5.android.input.editorinfo.EditorInfoWindow
-import org.fcitx.fcitx5.android.input.editing.TextEditingWindow
-import org.fcitx.fcitx5.android.input.status.StatusAreaEntry.Android.Type.InputMethod
-import org.fcitx.fcitx5.android.input.status.StatusAreaEntry.Android.Type.Keyboard
-import org.fcitx.fcitx5.android.input.status.StatusAreaEntry.Android.Type.ReloadConfig
-import org.fcitx.fcitx5.android.input.status.StatusAreaEntry.Android.Type.ThemeList
-import org.fcitx.fcitx5.android.input.status.StatusAreaEntry.Android.Type.TextEditing
 import org.fcitx.fcitx5.android.input.wm.InputWindow
 import org.fcitx.fcitx5.android.input.wm.InputWindowManager
 import org.fcitx.fcitx5.android.utils.AppUtil
@@ -57,31 +47,7 @@ class StatusAreaWindow : InputWindow.ExtendedInputWindow<StatusAreaWindow>(),
 
     private val editorInfoInspector by AppPrefs.getInstance().internal.editorInfoInspector
 
-    private val staticEntries by lazy {
-        arrayOf(
-            StatusAreaEntry.Android(context.getString(R.string.text_editing), R.drawable.ic_cursor_move, TextEditing),
-            StatusAreaEntry.Android(
-                context.getString(R.string.theme),
-                R.drawable.ic_baseline_palette_24,
-                ThemeList
-            ),
-            StatusAreaEntry.Android(
-                context.getString(R.string.input_method_options),
-                R.drawable.ic_baseline_language_24,
-                InputMethod
-            ),
-            StatusAreaEntry.Android(
-                context.getString(R.string.reload_config),
-                R.drawable.ic_baseline_sync_24,
-                ReloadConfig
-            ),
-            StatusAreaEntry.Android(
-                context.getString(R.string.virtual_keyboard),
-                R.drawable.ic_baseline_keyboard_24,
-                Keyboard
-            )
-        )
-    }
+    private val staticEntries get() = org.fcitx.fcitx5.android.data.ToolbarLayout.menu().map { ToolbarActions.entry(context,it) }.toTypedArray()
 
     private fun activateAction(action: Action) {
         fcitx.launchOnReady {
@@ -138,25 +104,7 @@ class StatusAreaWindow : InputWindow.ExtendedInputWindow<StatusAreaWindow>(),
                         popupMenu = popup
                         popup.show()
                     }
-                    is StatusAreaEntry.Android -> when (entry.type) {
-                        InputMethod -> fcitx.runImmediately { inputMethodEntryCached }.let {
-                            AppUtil.launchMainToInputMethodConfig(
-                                context, it.uniqueName, it.displayName
-                            )
-                        }
-                        ReloadConfig -> fcitx.launchOnReady { f ->
-                            f.reloadConfig()
-                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
-                                SubtypeManager.syncWith(f.enabledIme())
-                            }
-                            service.lifecycleScope.launch {
-                                Toast.makeText(service, R.string.done, Toast.LENGTH_SHORT).show()
-                            }
-                        }
-                        Keyboard -> AppUtil.launchMainToKeyboard(context)
-                        ThemeList -> AppUtil.launchMainToThemeList(context)
-                        TextEditing -> windowManager.attachWindow(TextEditingWindow())
-                    }
+                    is StatusAreaEntry.Android -> ToolbarActions.perform(entry.type,context,service,windowManager,fcitx)
                 }
             }
 

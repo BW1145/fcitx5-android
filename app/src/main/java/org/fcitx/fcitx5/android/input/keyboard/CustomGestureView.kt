@@ -137,6 +137,11 @@ open class CustomGestureView(ctx: Context) : FrameLayout(ctx) {
         // double tap state should be preserved on touch up
     }
 
+    fun stopRepeat() {
+        repeatJob?.cancel()
+        longPressJob?.cancel()
+    }
+
     fun cancelGestures() {
         isPressed = false
         resetState()

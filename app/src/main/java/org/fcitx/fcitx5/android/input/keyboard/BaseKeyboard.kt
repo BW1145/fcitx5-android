@@ -17,6 +17,7 @@ import org.fcitx.fcitx5.android.core.FcitxKeyMapping
 import org.fcitx.fcitx5.android.core.InputMethodEntry
 import org.fcitx.fcitx5.android.core.KeyStates
 import org.fcitx.fcitx5.android.core.KeySym
+import org.fcitx.fcitx5.android.data.KeyMacros
 import org.fcitx.fcitx5.android.data.InputFeedbacks
 import org.fcitx.fcitx5.android.data.prefs.AppPrefs
 import org.fcitx.fcitx5.android.data.prefs.ManagedPreference
@@ -178,7 +179,6 @@ abstract class BaseKeyboard(
                 }
             } else if (def is BackspaceKey) {
                 var pressedAt = 0L
-                var cleared = false
                 swipeEnabled = true
                 swipeAfterRepeatEnabled = true
                 swipeRepeatEnabled = true
@@ -188,20 +188,12 @@ abstract class BaseKeyboard(
                     when (event.type) {
                         GestureType.Down -> {
                             pressedAt = SystemClock.uptimeMillis()
-                            cleared = false
                             onAction(KeyAction.BeginBackspaceAction)
                             false
                         }
                         GestureType.Move -> {
                             val held = SystemClock.uptimeMillis() - pressedAt >= CustomGestureView.longPressDelay
-                            if (!cleared && held && event.totalY < 0 &&
-                                event.totalY.absoluteValue * swipeThresholdY > event.totalX.absoluteValue * swipeThresholdX) {
-                                cleared = true
-                                onAction(KeyAction.ClearBeforeCursorAction)
-                                InputFeedbacks.hapticFeedback(view, true)
-                                return@OnGestureListener true
-                            }
-                            if (cleared || held) return@OnGestureListener cleared
+                            if (held) return@OnGestureListener false
                             val count = event.countX
                             if (count != 0) {
                                 onAction(KeyAction.MoveSelectionAction(count))
@@ -210,9 +202,9 @@ abstract class BaseKeyboard(
                             } else false
                         }
                         GestureType.Up -> {
-                            if (!cleared) onAction(KeyAction.DeleteSelectionAction(event.totalX))
+                            onAction(KeyAction.DeleteSelectionAction(event.totalX))
                             onAction(KeyAction.EndBackspaceAction)
-                            cleared
+                            false
                         }
                         else -> false
                     }
@@ -358,6 +350,59 @@ abstract class BaseKeyboard(
                     }
                 }
             }
+            val macroKey = when (def) {
+                is AlphabetKey -> def.character.lowercase()
+                is AlphabetDigitKey -> def.character.lowercase()
+                is BackspaceKey -> "backspace"
+                is SpaceKey, is MiniSpaceKey -> "space"
+                is ReturnKey -> "return"
+                is CapsKey -> "caps"
+                is LanguageKey -> "language"
+                is LayoutSwitchKey, is ImageLayoutSwitchKey -> "symbols"
+                else -> (def.appearance as? KeyDef.Appearance.Text)?.displayText?.lowercase()
+            }
+            if (macroKey != null) {
+                val bindings = KeyMacros.load().filter { it.key == macroKey }
+                bindings.firstOrNull { it.trigger == "tap" }?.let { binding ->
+                    setOnClickListener { onAction(KeyAction.MacroAction(binding.steps)) }
+                    doubleTapEnabled = false
+                }
+                bindings.firstOrNull { it.trigger == "hold" }?.let { binding ->
+                    setOnLongClickListener { onAction(KeyAction.MacroAction(binding.steps)); true }
+                    repeatEnabled = false
+                }
+                val swipes = bindings.filter { it.trigger in listOf("up", "down", "left", "right") }
+                if (swipes.isNotEmpty()) {
+                    swipeEnabled = true
+                    swipeAfterRepeatEnabled = true
+                    swipeThresholdX = if(def is BackspaceKey || def is SpaceKey) selectionSwipeThreshold else inputSwipeThreshold
+                    swipeThresholdY = inputSwipeThreshold
+                    val previous = onGestureListener ?: OnGestureListener.Empty
+                    var started = 0L
+                    var handled = false
+                    onGestureListener = OnGestureListener { view, event ->
+                        if (event.type == GestureType.Down) { started = SystemClock.uptimeMillis(); handled = false }
+                        if (event.type == GestureType.Move && !handled && (event.totalX != 0 || event.totalY != 0)) {
+                            val vertical = event.totalY.absoluteValue * swipeThresholdY > event.totalX.absoluteValue * swipeThresholdX
+                            val direction = if (vertical) { if (event.totalY < 0) "up" else "down" } else { if (event.totalX < 0) "left" else "right" }
+                            val binding = swipes.firstOrNull { it.trigger == direction }
+                            val clearHold = macroKey == "backspace" && binding?.steps?.any { it.action == "clear" } == true
+                            if (binding != null && (!clearHold || SystemClock.uptimeMillis() - started >= CustomGestureView.longPressDelay)) {
+                                handled = true
+                                stopRepeat()
+                                onPopupAction(PopupAction.DismissAction(id))
+                                onAction(KeyAction.MacroAction(binding.steps))
+                                InputFeedbacks.hapticFeedback(view, true)
+                            }
+                        }
+                        if (handled) {
+                            if (event.type == GestureType.Up && def is BackspaceKey) onAction(KeyAction.EndBackspaceAction)
+                            true
+                        } else previous.onGesture(view, event)
+                    }
+                }
+            }
+
         }
     }
 

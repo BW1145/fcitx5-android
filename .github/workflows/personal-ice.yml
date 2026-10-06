@@ -30,7 +30,12 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y extra-cmake-modules gettext
           sdkmanager 'platforms;android-36' 'build-tools;36.1.0' 'ndk;28.0.13004108' 'cmake;3.31.6'
+      - name: Prepare pinned Rime and offline model data
+        run: |
+          python3 scripts/prepare_personal_rime.py
       - uses: gradle/actions/setup-gradle@v6
+      - name: Build Rime 1.17 with input enhancements
+        run: bash scripts/build_personal_rime.sh arm64-v8a
       - name: Build signed arm64 APK
         env:
           SIGN_KEY_BASE64: ${{ secrets.PERSONAL_SIGNING_KEY }}
@@ -51,6 +56,7 @@ jobs:
           fi
           cp "$apk" dist/fcitx5-custom-arm64.apk
           cp app/build/outputs/apk/release/build-metadata.json dist/
+          cp scripts/personal-rime-dependencies.json dist/
           cd dist
           sha256sum fcitx5-custom-arm64.apk > SHA256SUMS
       - uses: actions/upload-artifact@v7
@@ -75,12 +81,17 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y extra-cmake-modules gettext
           sdkmanager 'platforms;android-36' 'build-tools;36.1.0' 'ndk;28.0.13004108' 'cmake;3.31.6'
+      - name: Prepare pinned Rime and offline model data
+        run: |
+          python3 scripts/prepare_personal_rime.py
       - uses: gradle/actions/setup-gradle@v6
       - name: Enable Android emulator acceleration
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
+      - name: Build Rime for emulator
+        run: bash scripts/build_personal_rime.sh x86_64
       - name: Build emulator test APKs
         run: ./gradlew -PbuildABI=x86_64 :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest
       - name: Test pinyin editing, Japanese, deletion and saved content
@@ -117,7 +128,10 @@ jobs:
         run: |
           cat > notes.md <<'EOF'
           小企鹅输入法定制版，适用于 arm64 安卓设备，内置 Rime、雾凇全拼和 Anthy 日语。
-          支持点击修改待选拼音、横向滑动候选词、长按删除键后上滑清空、常用内容面板。
+          内置 Rime 1.17、多整句候选、约 41 MB 离线语言模型及 Predict 联想，默认启用拼写纠错和前后鼻音容错。
+          雾凇选项提供模型增强和联想开关。
+          支持剪贴板与常用内容搜索、拆词插入、本地链接清理、工具栏排列、字母键帽大小调整。
+          三个点菜单中的「按键与宏」可编辑按键动作组合，预设长按删除键后上划清空。
           常用内容入口位于剪贴板旁边；光标控制位于三个点菜单。
           覆盖安装保留已有配置；升级后日语自动加入输入法列表，可通过语言切换键选择。
           安装包已通过签名、离线权限、词库完整性和安卓模拟器输入验证。

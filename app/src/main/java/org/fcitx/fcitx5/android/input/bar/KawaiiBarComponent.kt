@@ -7,7 +7,6 @@ package org.fcitx.fcitx5.android.input.bar
 import android.graphics.Color
 import android.os.Build
 import android.util.Size
-import android.view.KeyEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.inputmethod.EditorInfo
@@ -55,6 +54,7 @@ import org.fcitx.fcitx5.android.input.candidates.expanded.window.GridExpandedCan
 import org.fcitx.fcitx5.android.input.candidates.horizontal.HorizontalCandidateComponent
 import org.fcitx.fcitx5.android.input.clipboard.ClipboardWindow
 import org.fcitx.fcitx5.android.input.dependency.UniqueViewComponent
+import org.fcitx.fcitx5.android.input.dependency.fcitx
 import org.fcitx.fcitx5.android.input.dependency.context
 import org.fcitx.fcitx5.android.input.dependency.inputMethodService
 import org.fcitx.fcitx5.android.input.dependency.theme
@@ -95,6 +95,7 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
     private val commonKeyActionListener: CommonKeyActionListener by manager.must()
     private val popup: PopupComponent by manager.must()
 
+    private val toolbarFcitx by manager.fcitx()
     private val prefs = AppPrefs.getInstance()
 
     private val clipboardSuggestion = prefs.clipboard.clipboardSuggestion
@@ -291,18 +292,7 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
                 onGestureListener = swipeHideKeyboardCallback
             }
             buttonsUi.apply {
-                undoButton.setOnClickListener {
-                    service.sendCombinationKeyEvents(KeyEvent.KEYCODE_Z, ctrl = true)
-                }
-                redoButton.setOnClickListener {
-                    service.sendCombinationKeyEvents(KeyEvent.KEYCODE_Z, ctrl = true, shift = true)
-                }
-                savedContentButton.setOnClickListener {
-                    windowManager.attachWindow(SavedContentWindow())
-                }
-                clipboardButton.setOnClickListener {
-                    windowManager.attachWindow(ClipboardWindow())
-                }
+                onAction = { type -> org.fcitx.fcitx5.android.input.status.ToolbarActions.perform(type,context,service,windowManager,toolbarFcitx) }
                 moreButton.setOnClickListener {
                     windowManager.attachWindow(StatusAreaWindow())
                 }

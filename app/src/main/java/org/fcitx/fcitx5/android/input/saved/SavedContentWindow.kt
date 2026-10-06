@@ -97,10 +97,9 @@ class SavedContentWindow : InputWindow.ExtendedInputWindow<SavedContentWindow>()
     }
 
     override fun onCreateView(): View = scroll
-    override fun onCreateBarExtension(): View = Button(context).apply {
-        setText(R.string.saved_content_add)
-        setTextColor(theme.keyTextColor)
-        setOnClickListener { edit() }
+    override fun onCreateBarExtension(): View = LinearLayout(context).apply {
+        addView(Button(context).apply { setText(R.string.content_search);setOnClickListener { windowManager.attachWindow(KeyboardWindow);service.openContentSearch(true) } })
+        addView(Button(context).apply { setText(R.string.saved_content_add);setOnClickListener { edit() } })
     }
     override fun onAttached() = render()
     override fun onDetached() { menu?.dismiss(); menu = null }

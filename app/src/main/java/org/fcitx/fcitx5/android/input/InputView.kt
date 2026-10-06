@@ -74,6 +74,7 @@ class InputView(
     theme: Theme
 ) : BaseInputView(service, fcitx, theme) {
 
+    val contentSearch = org.fcitx.fcitx5.android.input.clipboard.ContentSearchPanel(service,theme)
     private val keyBorder by ThemeManager.prefs.keyBorder
 
     private val customBackground = imageView {
@@ -272,6 +273,7 @@ class InputView(
             centerHorizontally()
             bottomOfParent()
         })
+        add(contentSearch.root, lParams(matchParent, wrapContent) { above(preedit.ui.root); centerHorizontally() })
         add(popup.root, lParams(matchParent, matchParent) {
             centerVertically()
             centerHorizontally()
@@ -384,6 +386,7 @@ class InputView(
     }
 
     override fun onDetachedFromWindow() {
+        contentSearch.close()
         advancedPrefs.unregisterOnChangeListener(onKeyboardSizeChangeListener)
         keyboardPrefs.unregisterOnChangeListener(onKeyboardSizeChangeListener)
         // clear DynamicScope, implies that InputView should not be attached again after detached.

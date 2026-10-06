@@ -1,0 +1,28 @@
+patch:
+  translator/enable_correction: true
+  translator/max_sentences: 5
+  translator/contextual_suggestions: true
+  translator/max_homophones: 7
+  translator/max_homographs: 7
+  grammar/language: zh-hans-t-essay-bgw-compact
+  engine/processors/@before 0: predictor
+  engine/translators/@before 0: predict_translator
+  engine/filters/@before 0: lua_filter@*predict_simplify
+  switches/+:
+    - name: octagram
+      states: [模型关闭, 模型增强]
+      reset: 1
+    - name: prediction
+      states: [联想关闭, 联想开启]
+      reset: 1
+  predictor:
+    db: predict.db
+    max_candidates: 5
+    max_iterations: 1
+  speller/algebra/+:
+    - derive/ang$/an/
+    - derive/an$/ang/
+    - derive/eng$/en/
+    - derive/en$/eng/
+    - derive/ing$/in/
+    - derive/in$/ing/

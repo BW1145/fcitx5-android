@@ -81,6 +81,28 @@ class PersonalRimeTest {
             assertEquals("rime", fcitx.currentIme().uniqueName)
             assertFalse(AppPrefs.getInstance().clipboard.clipboardListening.getValue())
             candidates("nihao") { "你好" in it }
+            candidates("shuawomenwan") { "耍我们玩" in it }
+            candidates("mintian") { "明天" in it }
+            candidates("ningtian") { "明天" in it }
+            fun allActions(actions:Array<org.fcitx.fcitx5.android.core.Action>):List<org.fcitx.fcitx5.android.core.Action> = actions.flatMap { listOf(it)+allActions(it.menu ?: emptyArray()) }
+            val modelToggle=allActions(fcitx.statusArea()).firstOrNull { it.shortText.startsWith("模型增强") }
+            assertTrue("Octagram toggle must be exposed in Rime options",modelToggle!=null)
+            fcitx.activateAction(modelToggle!!.id)
+            assertTrue("Model can be switched off",allActions(fcitx.statusArea()).any { it.shortText.startsWith("模型关闭") })
+            fcitx.reset()
+            fcitx.focus(false);fcitx.focus()
+            assertTrue("Model toggle must survive focus changes",allActions(fcitx.statusArea()).any { it.shortText.startsWith("模型关闭") })
+            fcitx.activateAction(allActions(fcitx.statusArea()).first { it.shortText.startsWith("模型关闭") }.id)
+            assertTrue("Model can be switched back on",allActions(fcitx.statusArea()).any { it.shortText.startsWith("模型增强") })
+            "nihao".forEach { fcitx.sendKey(it) }
+            val hello=fcitx.getCandidates(0,10).indexOfFirst { it.text=="你好" }
+            assertTrue(hello>=0)
+            fcitx.select(hello)
+            val nextWords=fcitx.getCandidates(0,10).map { it.text }
+            assertTrue("Predict should offer next-word candidates after committing a word",nextWords.isNotEmpty())
+            assertTrue("Predict should follow simplified Chinese mode: $nextWords","吗" in nextWords && "嗎" !in nextWords)
+            fcitx.reset()
+
             candidates("rq") { words -> words.any { it.matches(Regex("\\d{4}-\\d{2}-\\d{2}")) } }
 
             "niho".forEach { fcitx.sendKey(it) }
@@ -148,6 +170,15 @@ class PersonalRimeTest {
         } finally {
             fcitx.stop()
         }
+    }
+
+    @Test
+    fun clipboardLinkCleanupPreservesPayloadAndOriginalContent() {
+        val context=InstrumentationRegistry.getInstrumentation().targetContext
+        val filter=org.fcitx.fcitx5.android.data.clipboard.ClearUrlsRuleFilter(context.assets.open("clearurls-rules.json").bufferedReader().use { it.readText() })
+        val original="https://example.com/page?value=a%26b%3Dc&utm_source=clipboard&utm_medium=share"
+        assertEquals("https://example.com/page?value=a%26b%3Dc",filter.transform(original))
+        assertEquals("普通文本",filter.transform("普通文本"))
     }
 
     @Test
@@ -253,7 +284,7 @@ class PersonalRimeTest {
             touch(MotionEvent.ACTION_MOVE, -key.height * 2f)
             touch(MotionEvent.ACTION_UP, -key.height * 2f)
         }
-        assertEquals(1, actions.count { it is KeyAction.ClearBeforeCursorAction })
+        assertEquals(1, actions.count { it is KeyAction.MacroAction && it.steps.any { step -> step.action == "clear" } })
         val repeats = actions.count { it is KeyAction.SymAction }
         assertTrue("Long press must still repeat ordinary backspace", repeats > 0)
         Thread.sleep(150)

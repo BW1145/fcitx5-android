@@ -14,7 +14,7 @@ find_package(ECM MODULE)
 find_package(Fcitx5Core MODULE)
 find_package(Fcitx5Module MODULE)
 
-set(Rime_VERSION "1.12.0")
+set(Rime_VERSION "1.17.0")
 set(Rime_dependencies
         log # glog links to android log
         "${PREBUILT_DIR}/glog/${ANDROID_ABI}/lib/libglog.a"

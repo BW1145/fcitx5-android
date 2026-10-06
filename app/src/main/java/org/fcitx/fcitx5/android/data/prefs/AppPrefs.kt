@@ -33,6 +33,7 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
         val lastSymbolLayout = string("last_symbol_layout", PickerWindow.Key.Symbol.name)
         val lastPickerType = string("last_picker_type", PickerWindow.Key.Emoji.name)
         val verboseLog = bool("verbose_log", false)
+        val customUiRevision = int("custom_ui_revision", 0)
         val pid = int("pid", 0)
         val editorInfoInspector = bool("editor_info_inspector", false)
         val needNotifications = bool("need_notifications", true)
@@ -161,6 +162,7 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
             "swipe_symbol_behavior",
             SwipeSymbolDirection.Down
         )
+        val letterSize = int(R.string.letter_size, "letter_size", 23, 16, 38, "dp")
         val longPressDelay = int(
             R.string.keyboard_long_press_delay,
             "keyboard_long_press_delay",

@@ -1,0 +1,11 @@
+{
+    "uniqueId": "lotem/rime-octagram-data",
+    "artifactVersion": "20260712",
+    "description": "Compact simplified Chinese word language model",
+    "name": "Octagram compact model",
+    "website": "https://github.com/lotem/rime-octagram-data",
+    "tag": "native",
+    "licenses": [
+        "LGPL-3.0-only"
+    ]
+}

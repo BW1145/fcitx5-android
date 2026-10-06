@@ -57,7 +57,9 @@ class ClipboardUi(override val ctx: Context, private val theme: Theme) : Ui {
         contentDescription = ctx.getString(R.string.delete_all)
     }
 
+    val searchButton = ToolButton(ctx,R.drawable.ic_baseline_search_24,theme).apply { contentDescription=ctx.getString(R.string.content_search) }
     val extension = horizontalLayout {
+        add(searchButton,lParams(dp(40),dp(40)))
         add(deleteAllButton, lParams(dp(40), dp(40)))
     }
 

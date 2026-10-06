@@ -8,6 +8,9 @@ package org.fcitx.fcitx5.android.input.keyboard
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import android.view.KeyEvent
 import org.fcitx.fcitx5.android.core.FcitxAPI
 import org.fcitx.fcitx5.android.core.FcitxKeyMapping
 import org.fcitx.fcitx5.android.daemon.launchOnReady
@@ -91,20 +94,43 @@ class CommonKeyActionListener :
 
     val listener by lazy {
         KeyActionListener { action, _ ->
+            if(service.handleSearchAction(action)) return@KeyActionListener
             when (action) {
+                is KeyAction.MacroAction -> {
+                    val preeditOnly = backspaceStartedWithPreedit || !preeditState.isEmpty
+                    service.postFcitxJob {
+                        for (step in action.steps) {
+                            when (step.action) {
+                                "clear" -> {
+                                    reset()
+                                    backspaceSwipeState = Stopped
+                                    if (!preeditOnly) withContext(Dispatchers.Main) { service.clearBeforeCursor() }
+                                }
+                                "text" -> { commitAndReset(); withContext(Dispatchers.Main) { service.commitText(step.text) } }
+                                else -> {
+                                    commitAndReset()
+                                    withContext(Dispatchers.Main) {
+                                        when (step.action) {
+                                            "selectAll" -> service.currentInputConnection?.performContextMenuAction(android.R.id.selectAll)
+                                            "copy" -> service.currentInputConnection?.performContextMenuAction(android.R.id.copy)
+                                            "paste" -> service.currentInputConnection?.performContextMenuAction(android.R.id.paste)
+                                            "cut" -> service.currentInputConnection?.performContextMenuAction(android.R.id.cut)
+                                            "undo" -> service.sendCombinationKeyEvents(KeyEvent.KEYCODE_Z, ctrl=true)
+                                            "redo" -> service.sendCombinationKeyEvents(KeyEvent.KEYCODE_Z, ctrl=true, shift=true)
+                                            "key" -> service.sendCombinationKeyEvents(KeyEvent.keyCodeFromString("KEYCODE_" + step.text.uppercase().removePrefix("KEYCODE_")), ctrl=step.ctrl, alt=step.alt, shift=step.shift)
+                                            else -> Unit
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
                 is KeyAction.BeginBackspaceAction -> {
                     backspaceSwipeState = Stopped
                     backspaceStartedWithPreedit = !preeditState.isEmpty
                 }
                 is KeyAction.EndBackspaceAction -> backspaceStartedWithPreedit = false
-                is KeyAction.ClearBeforeCursorAction -> {
-                    backspaceSwipeState = Stopped
-                    val preeditOnly = backspaceStartedWithPreedit
-                    service.postFcitxJob {
-                        reset()
-                        if (!preeditOnly) service.lifecycleScope.launch { service.clearBeforeCursor() }
-                    }
-                }
                 is FcitxKeyAction -> service.postFcitxJob {
                     sendKey(action.act, action.states.states, action.code)
                     if (inputMethodEntryCached.uniqueName == "anthy") {

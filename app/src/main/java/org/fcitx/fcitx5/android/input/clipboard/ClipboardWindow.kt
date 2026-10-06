@@ -123,6 +123,12 @@ class ClipboardWindow : InputWindow.ExtendedInputWindow<ClipboardWindow>() {
                 }
             }
 
+            override fun onSplit(entry: ClipboardEntry) { windowManager.attachWindow(TokenizedContentWindow(entry.text)) }
+            override fun onCleanLink(entry: ClipboardEntry) {
+                val filter=org.fcitx.fcitx5.android.data.clipboard.ClearUrlsRuleFilter(context.assets.open("clearurls-rules.json").bufferedReader().use { it.readText() })
+                service.commitText(filter.transform(entry.text))
+                if(clipboardReturnAfterPaste) windowManager.attachWindow(KeyboardWindow)
+            }
             override fun onPaste(entry: ClipboardEntry) {
                 service.commitText(entry.text)
                 if (clipboardReturnAfterPaste) windowManager.attachWindow(KeyboardWindow)
@@ -163,6 +169,7 @@ class ClipboardWindow : InputWindow.ExtendedInputWindow<ClipboardWindow>() {
             enableUi.enableButton.setOnClickListener {
                 clipboardEnabledPref.setValue(true)
             }
+            searchButton.setOnClickListener { windowManager.attachWindow(KeyboardWindow);service.openContentSearch(false) }
             deleteAllButton.setOnClickListener {
                 service.lifecycleScope.launch {
                     promptDeleteAll(ClipboardManager.haveUnpinned())

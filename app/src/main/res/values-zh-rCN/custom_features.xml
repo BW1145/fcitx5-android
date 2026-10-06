@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="key_macros">按键与宏</string>
+    <string name="macro_add">新增按键配置</string>
+    <string name="macro_add_step">添加动作</string>
+    <string name="macro_restore">恢复默认</string>
+    <string name="macro_restore_confirm">恢复默认按键配置？</string>
+    <string name="macro_help">选择按键和触发方式，按顺序添加动作。默认长按删除键后上划：有待选拼音时清空拼音，否则清空光标前的文字。</string>
+    <string name="macro_step_text">文字，或按键名如 ENTER、DPAD_LEFT、A</string>
+    <string name="macro_invalid_key">无法识别此按键名</string>
+    <string name="macro_backspace">删除键</string>
+    <string name="macro_space">空格键</string>
+    <string name="macro_return">回车键</string>
+    <string name="macro_caps">大小写键</string>
+    <string name="macro_language">语言切换键</string>
+    <string name="letter_size">26 个字母的键帽大小</string>
+    <string name="toolbar_layout">工具栏布局</string>
+    <string name="toolbar_help">勾选的按钮按顺序显示在工具栏，其余按钮收进三个点菜单。使用箭头调整顺序。</string>
+    <string name="content_search">搜索内容</string>
+    <string name="search_empty">没有找到匹配内容</string>
+    <string name="split_content">拆词选择</string>
+    <string name="insert_selected">插入所选</string>
+    <string name="clean_link_paste">清理链接后粘贴</string>
+    <string-array name="macro_triggers">
+        <item>点击</item>
+        <item>长按</item>
+        <item>上划</item>
+        <item>下划</item>
+        <item>左划</item>
+        <item>右划</item>
+    </string-array>
+    <string-array name="macro_actions">
+        <item>插入文字</item>
+        <item>按下按键</item>
+        <item>全选</item>
+        <item>复制</item>
+        <item>粘贴</item>
+        <item>剪切</item>
+        <item>撤销</item>
+        <item>重做</item>
+        <item>清空拼音／光标前文字</item>
+    </string-array>
+    <string name="macro_symbols">符号切换键</string>
+</resources>

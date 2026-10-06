@@ -31,7 +31,8 @@ internal object PersonalDefaults {
         val root = context.getExternalFilesDir(null) ?: context.filesDir
         for (path in listOf(
             "config/profile", "config/config", "data/rime/default.custom.yaml",
-            "data/rime/rime_ice.custom.yaml"
+            "data/rime/rime_ice.custom.yaml", "data/rime/personal_ice.yaml",
+            "data/rime/zh-hans-t-essay-bgw-compact.gram", "data/rime/predict.db"
         )) {
             val file = root.resolve(path)
             if (file.exists()) continue

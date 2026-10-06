@@ -1,0 +1,37 @@
+{
+  "rime_version": "1.17.0",
+  "sources": [
+    {
+      "repo": "rime/librime",
+      "ref": "1.17.0",
+      "sha256": "a60274da5d8b8a7187e6c7e9ba5023334ed7bdd182535e93c4e96de8cf188377"
+    },
+    {
+      "repo": "hchunhui/librime-lua",
+      "ref": "68f9c364a2d25a04c7d4794981d7c796b05ab627",
+      "sha256": "3c4a60bacf8dd6389ca1b4b4889207b8f6c0c6a43e7b848cdac570d592a640b5"
+    },
+    {
+      "repo": "lotem/librime-octagram",
+      "ref": "57d18b9f58e5284bd891d559f6bdd16cf60341e9",
+      "sha256": "7b9c77bcf17566b64204791b72cdb1b4471e22efec5eef9b79ca764ab99a1576"
+    },
+    {
+      "repo": "rime/librime-predict",
+      "ref": "920bd41ebf6f9bf6855d14fbe80212e54e749791",
+      "sha256": "38b2f32254e1a35ac04dba376bc8999915c8fbdb35be489bffdf09079983400c"
+    }
+  ],
+  "data": [
+    {
+      "name": "zh-hans-t-essay-bgw-compact.gram",
+      "url": "https://github.com/lotem/rime-octagram-data/releases/download/20260712/zh-hans-t-essay-bgw-compact.gram",
+      "sha256": "d3cb2438c1fdcd6a855dd6ca8f5c1060a29273c6b64c2c2c69af67cd71b6aa7e"
+    },
+    {
+      "name": "predict.db",
+      "url": "https://github.com/rime/librime-predict/releases/download/data-1.0/predict.db",
+      "sha256": "2a5a2b7c77f8f3d7c0836dfc8fd8b791ac2574d8bd93a3a2baaae1ee4861f5be"
+    }
+  ]
+}

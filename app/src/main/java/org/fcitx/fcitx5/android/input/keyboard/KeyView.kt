@@ -24,6 +24,8 @@ import androidx.annotation.DrawableRes
 import androidx.annotation.FloatRange
 import androidx.constraintlayout.widget.ConstraintLayout
 import androidx.core.view.updateLayoutParams
+import org.fcitx.fcitx5.android.data.prefs.AppPrefs
+import org.fcitx.fcitx5.android.data.prefs.ManagedPreference
 import org.fcitx.fcitx5.android.R
 import org.fcitx.fcitx5.android.data.theme.Theme
 import org.fcitx.fcitx5.android.data.theme.ThemeManager
@@ -267,6 +269,20 @@ open class TextKeyView(ctx: Context, theme: Theme, def: KeyDef.Appearance.Text) 
                 Variant.Accent -> theme.accentKeyTextColor
             }
         )
+    }
+
+    private val letterSize = AppPrefs.getInstance().keyboard.letterSize
+    private val isLetter = def.displayText.length == 1 && def.displayText[0].lowercaseChar() in 'a'..'z'
+    private val sizeListener = ManagedPreference.OnChangeListener<Int> { _, value ->
+        if (isLetter) mainText.setTextSize(TypedValue.COMPLEX_UNIT_DIP, value.toFloat())
+    }
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        if (isLetter) { mainText.setTextSize(TypedValue.COMPLEX_UNIT_DIP, letterSize.getValue().toFloat()); letterSize.registerOnChangeListener(sizeListener) }
+    }
+    override fun onDetachedFromWindow() {
+        letterSize.unregisterOnChangeListener(sizeListener)
+        super.onDetachedFromWindow()
     }
 
     init {

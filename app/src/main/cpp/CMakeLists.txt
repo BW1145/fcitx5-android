@@ -113,3 +113,20 @@ install(DIRECTORY "${RIME_ICE_DIR}/opencc/"
 install(FILES "${RIME_ICE_DIR}/LICENSE"
         DESTINATION "${FCITX_INSTALL_DATADIR}/rime-data"
         RENAME rime-ice.LICENSE COMPONENT prebuilt-assets)
+
+# Enhanced schema remains shared data; personal user patches still take precedence.
+install(FILES
+        "${CMAKE_CURRENT_SOURCE_DIR}/../assets/personal-defaults/data/rime/rime_ice.schema.yaml"
+        "${CMAKE_CURRENT_SOURCE_DIR}/../assets/personal-defaults/data/rime/personal_ice.yaml"
+        DESTINATION "${FCITX_INSTALL_DATADIR}/rime-data"
+        COMPONENT prebuilt-assets)
+
+file(READ "${RIME_ICE_DIR}/default.yaml" PERSONAL_RIME_DEFAULT)
+string(REPLACE "  save_options:" "  save_options:\n    - octagram\n    - prediction" PERSONAL_RIME_DEFAULT "${PERSONAL_RIME_DEFAULT}")
+file(WRITE "${CMAKE_CURRENT_BINARY_DIR}/personal-rime-default.yaml" "${PERSONAL_RIME_DEFAULT}")
+install(FILES "${CMAKE_CURRENT_BINARY_DIR}/personal-rime-default.yaml"
+        DESTINATION "${FCITX_INSTALL_DATADIR}/rime-data" RENAME default.yaml
+        COMPONENT prebuilt-assets)
+
+install(FILES "${CMAKE_CURRENT_SOURCE_DIR}/../assets/personal-defaults/data/rime/lua/predict_simplify.lua"
+        DESTINATION "${FCITX_INSTALL_DATADIR}/rime-data/lua" COMPONENT prebuilt-assets)

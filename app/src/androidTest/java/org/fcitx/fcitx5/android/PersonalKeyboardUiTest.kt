@@ -101,6 +101,7 @@ class PersonalKeyboardUiTest {
         shell("ime enable $ime")
         shell("ime set $ime")
         activityRule.launchActivity(null)
+        var savedSearchEntry: org.fcitx.fcitx5.android.data.SavedContentStore.Entry? = null
         val fcitx = FcitxDaemon.connect(javaClass.name)
         try {
             await("Keyboard is visible") { imeNodes().any { it.viewIdResourceName?.endsWith(":id/button_space") == true } }
@@ -140,7 +141,33 @@ class PersonalKeyboardUiTest {
                 instrumentation.runOnMainSync { committed = activityRule.activity.editor.text.toString() }
                 "日本語" in committed
             }
+            fcitx.runOnReady { reset(); activateIme("rime") }
+            savedSearchEntry = org.fcitx.fcitx5.android.data.SavedContentStore.put(null,"搜索回归","搜索插入成功")
+            val savedLabel=context.getString(R.string.saved_content)
+            if(imeNodes().none { it.contentDescription?.toString()==savedLabel }) {
+                val expandLabel=context.getString(R.string.expand_toolbar)
+                await("Toolbar can be expanded") { imeNodes().any { it.contentDescription?.toString()==expandLabel } }
+                tapNode(imeNodes().first { it.contentDescription?.toString()==expandLabel })
+            }
+            await("Saved content toolbar entry is visible") { imeNodes().any { it.contentDescription?.toString()==savedLabel } }
+            tapNode(imeNodes().first { it.contentDescription?.toString()==savedLabel })
+            val searchLabel=context.getString(R.string.content_search)
+            await("Saved content search entry is visible") { imeNodes().any { it.text?.toString()==searchLabel } }
+            tapNode(imeNodes().first { it.text?.toString()==searchLabel })
+            type("sousuo")
+            await("Search keyword candidate is visible") { imeNodes().any { it.text?.toString()=="搜索" } }
+            tapNode(imeNodes().first { it.text?.toString()=="搜索" })
+            await("Search matches saved content") { imeNodes().any { it.text?.toString()=="搜索回归" } }
+            instrumentation.runOnMainSync { assertEquals(committed,activityRule.activity.editor.text.toString()) }
+            tapNode(imeNodes().first { it.text?.toString()=="搜索回归" })
+            await("Search result inserts into the original editor") {
+                var value=""
+                instrumentation.runOnMainSync { value=activityRule.activity.editor.text.toString() }
+                value==committed+"搜索插入成功"
+            }
+
         } finally {
+            savedSearchEntry?.let { org.fcitx.fcitx5.android.data.SavedContentStore.delete(it.id) }
             screenshot("keyboard-final")
             activityRule.finishActivity()
             FcitxDaemon.disconnect(javaClass.name)

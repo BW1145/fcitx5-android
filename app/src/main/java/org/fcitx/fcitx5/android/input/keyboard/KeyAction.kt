@@ -10,6 +10,7 @@ import org.fcitx.fcitx5.android.core.ScancodeMapping
 import org.fcitx.fcitx5.android.input.picker.PickerWindow
 
 sealed class KeyAction {
+    data class MacroAction(val steps: List<org.fcitx.fcitx5.android.data.KeyMacros.Step>) : KeyAction()
 
     data class FcitxKeyAction(
         val act: String,
@@ -41,7 +42,6 @@ sealed class KeyAction {
 
     data object EndBackspaceAction : KeyAction()
 
-    data object ClearBeforeCursorAction : KeyAction()
 
     data class PickerSwitchAction(val key: PickerWindow.Key? = null) : KeyAction()
 
