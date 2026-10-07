@@ -13,7 +13,7 @@
     <string name="macro_return">Enter</string>
     <string name="macro_caps">Shift</string>
     <string name="macro_language">Language</string>
-    <string name="letter_size">26 letter label size</string>
+    <string name="key_content_size">Key text and icon size</string>
     <string name="toolbar_layout">Toolbar layout</string>
     <string name="toolbar_help">Checked items appear on the toolbar in this order. Other items appear in More. Use the arrows to change the order.</string>
     <string name="content_search">Search content</string>

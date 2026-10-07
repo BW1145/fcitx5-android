@@ -13,7 +13,7 @@
     <string name="macro_return">回车键</string>
     <string name="macro_caps">大小写键</string>
     <string name="macro_language">语言切换键</string>
-    <string name="letter_size">26 个字母的键帽大小</string>
+    <string name="key_content_size">按键文字与图标大小</string>
     <string name="toolbar_layout">工具栏布局</string>
     <string name="toolbar_help">勾选的按钮按顺序显示在工具栏，其余按钮收进三个点菜单。使用箭头调整顺序。</string>
     <string name="content_search">搜索内容</string>

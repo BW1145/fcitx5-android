@@ -162,7 +162,7 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
             "swipe_symbol_behavior",
             SwipeSymbolDirection.Down
         )
-        val letterSize = int(R.string.letter_size, "letter_size", 23, 16, 38, "dp")
+        val keyContentSize = int(R.string.key_content_size, "letter_size", 23, 16, 38, "dp")
         val longPressDelay = int(
             R.string.keyboard_long_press_delay,
             "keyboard_long_press_delay",

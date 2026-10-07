@@ -34,6 +34,18 @@ import org.fcitx.fcitx5.android.input.keyboard.CustomGestureView
 import org.fcitx.fcitx5.android.input.keyboard.KeyAction
 import org.fcitx.fcitx5.android.input.keyboard.KeyActionListener
 import org.fcitx.fcitx5.android.input.keyboard.TextKeyboard
+import org.fcitx.fcitx5.android.input.keyboard.AltTextKeyView
+import org.fcitx.fcitx5.android.input.keyboard.AlphabetKey
+import org.fcitx.fcitx5.android.input.keyboard.TextKeyView
+import org.fcitx.fcitx5.android.input.keyboard.SymbolKey
+import org.fcitx.fcitx5.android.input.keyboard.LayoutSwitchKey
+import org.fcitx.fcitx5.android.input.keyboard.ImageTextKeyView
+import org.fcitx.fcitx5.android.input.keyboard.CommaKey
+import org.fcitx.fcitx5.android.input.keyboard.KeyDef
+import org.fcitx.fcitx5.android.input.keyboard.ImageKeyView
+import org.fcitx.fcitx5.android.input.keyboard.BackspaceKey
+import org.fcitx.fcitx5.android.input.keyboard.ReturnKey
+import org.fcitx.fcitx5.android.input.keyboard.SpaceKey
 import java.io.File
 import java.util.zip.ZipInputStream
 import org.fcitx.fcitx5.android.data.prefs.AppPrefs
@@ -43,6 +55,69 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PersonalRimeTest {
+    @Test
+    fun keyContentSizeScalesTextAndIconsAcrossOrientations() {
+        val instrumentation = InstrumentationRegistry.getInstrumentation()
+        val preference = AppPrefs.getInstance().keyboard.keyContentSize
+        val original = preference.getValue()
+        instrumentation.runOnMainSync {
+            try {
+                for (orientation in listOf(android.content.res.Configuration.ORIENTATION_PORTRAIT,
+                    android.content.res.Configuration.ORIENTATION_LANDSCAPE)) {
+                    val configuration = android.content.res.Configuration(instrumentation.targetContext.resources.configuration)
+                    configuration.orientation = orientation
+                    val context = instrumentation.targetContext.createConfigurationContext(configuration)
+                    val theme = ThemeManager.DefaultTheme
+                    val width = (context.resources.displayMetrics.density * 48).toInt()
+                    val height = (context.resources.displayMetrics.density *
+                        if (orientation == android.content.res.Configuration.ORIENTATION_PORTRAIT) 64 else 44).toInt()
+                    val views = listOf(
+                        AltTextKeyView(context, theme,
+                            AlphabetKey("a", "@").appearance as KeyDef.Appearance.AltText),
+                        TextKeyView(context, theme,
+                            SymbolKey(".").appearance as KeyDef.Appearance.Text),
+                        TextKeyView(context, theme,
+                            LayoutSwitchKey("?123").appearance as KeyDef.Appearance.Text),
+                        TextKeyView(context, theme,
+                            SpaceKey().appearance as KeyDef.Appearance.Text).apply { mainText.text = "雾凇" },
+                        ImageTextKeyView(context, theme,
+                            CommaKey(0.1f, KeyDef.Appearance.Variant.Normal).appearance as KeyDef.Appearance.ImageText),
+                        ImageKeyView(context, theme,
+                            BackspaceKey().appearance as KeyDef.Appearance.Image),
+                        ImageKeyView(context, theme,
+                            ReturnKey().appearance as KeyDef.Appearance.Image)
+                    )
+                    for (view in views) {
+                        view.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
+                            View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY))
+                        view.layout(0, 0, width, height)
+                        val ink = when (view.def.variant) {
+                            KeyDef.Appearance.Variant.Normal -> theme.keyTextColor
+                            KeyDef.Appearance.Variant.Accent -> theme.accentKeyTextColor
+                            else -> theme.altKeyTextColor
+                        }
+                        fun inkPixels(size: Int): Int {
+                            preference.setValue(size)
+                            val bitmap = android.graphics.Bitmap.createBitmap(width, height, android.graphics.Bitmap.Config.ARGB_8888)
+                            view.draw(android.graphics.Canvas(bitmap))
+                            val pixels = IntArray(width * height)
+                            bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
+                            bitmap.recycle()
+                            return pixels.count { it == ink }
+                        }
+                        val small = inkPixels(16)
+                        val large = inkPixels(38)
+                        assertTrue("${view.javaClass.simpleName} must enlarge in orientation $orientation ($small -> $large)", large > small && small > 0)
+                        assertEquals(width, view.width)
+                        assertEquals(height, view.height)
+                    }
+                }
+            } finally {
+                preference.setValue(original)
+            }
+        }
+    }
+
     @Test
     fun freshInstallProvidesOfflinePinyinAndKeepsUserConfig() = runBlocking {
         val context = InstrumentationRegistry.getInstrumentation().targetContext

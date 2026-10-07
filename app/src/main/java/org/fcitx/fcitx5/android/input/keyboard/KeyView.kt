@@ -9,6 +9,7 @@ import android.content.Context
 import android.content.res.ColorStateList
 import android.content.res.Configuration
 import android.graphics.Color
+import android.graphics.Canvas
 import android.graphics.Rect
 import android.graphics.Typeface
 import android.graphics.drawable.ColorDrawable
@@ -38,7 +39,6 @@ import org.fcitx.fcitx5.android.utils.unset
 import splitties.dimensions.dp
 import splitties.views.dsl.constraintlayout.centerHorizontally
 import splitties.views.dsl.constraintlayout.centerInParent
-import splitties.views.dsl.constraintlayout.constraintLayout
 import splitties.views.dsl.constraintlayout.lParams
 import splitties.views.dsl.constraintlayout.parentId
 import splitties.views.dsl.core.add
@@ -51,10 +51,16 @@ import splitties.views.existingOrNewId
 import splitties.views.imageResource
 import splitties.views.padding
 import kotlin.math.min
+import kotlin.math.max
 import kotlin.math.roundToInt
 
 abstract class KeyView(ctx: Context, val theme: Theme, val def: KeyDef.Appearance) :
     CustomGestureView(ctx) {
+
+    private val contentSize = AppPrefs.getInstance().keyboard.keyContentSize
+    private val contentSizeListener = ManagedPreference.OnChangeListener<Int> { _, _ ->
+        appearanceView.invalidate()
+    }
 
     val bordered: Boolean
     val borderStroke: Boolean
@@ -106,9 +112,46 @@ abstract class KeyView(ctx: Context, val theme: Theme, val def: KeyDef.Appearanc
      * `AppearanceView` in the inner [ConstraintLayout], it can be smaller than its parent,
      * and holds the [bounds] for popup.
      */
-    protected val appearanceView = constraintLayout {
+    protected val appearanceView = object : ConstraintLayout(ctx) {
         // sync any state from parent
-        isDuplicateParentStateEnabled = true
+        init { isDuplicateParentStateEnabled = true }
+
+        override fun dispatchDraw(canvas: Canvas) {
+            val centerX = width / 2f
+            val centerY = height / 2f
+            var halfWidth = 0f
+            var halfHeight = 0f
+            for (i in 0 until childCount) {
+                val child = getChildAt(i)
+                if (child.visibility != View.VISIBLE) continue
+                halfWidth = max(halfWidth, max(centerX - child.left, child.right - centerX))
+                halfHeight = max(halfHeight, max(centerY - child.top, child.bottom - centerY))
+            }
+            var scale = contentSize.getValue() / 23f
+            if (scale > 1f && halfWidth > 0f && halfHeight > 0f) {
+                val roundReturn = !bordered && def.viewId == R.id.button_return
+                val radius = min(min(width, height), dp(35)) / 2f
+                val availableWidth = if (roundReturn) radius else centerX - hMargin
+                val availableHeight = if (roundReturn) radius else centerY - vMargin
+                val fit = min(availableWidth / halfWidth, availableHeight / halfHeight)
+                scale = min(scale, max(1f, fit))
+            }
+            val checkpoint = canvas.save()
+            canvas.scale(scale, scale, centerX, centerY)
+            super.dispatchDraw(canvas)
+            canvas.restoreToCount(checkpoint)
+        }
+    }
+
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        contentSize.registerOnChangeListener(contentSizeListener)
+        appearanceView.invalidate()
+    }
+
+    override fun onDetachedFromWindow() {
+        contentSize.unregisterOnChangeListener(contentSizeListener)
+        super.onDetachedFromWindow()
     }
 
     init {
@@ -269,20 +312,6 @@ open class TextKeyView(ctx: Context, theme: Theme, def: KeyDef.Appearance.Text) 
                 Variant.Accent -> theme.accentKeyTextColor
             }
         )
-    }
-
-    private val letterSize = AppPrefs.getInstance().keyboard.letterSize
-    private val isLetter = def.displayText.length == 1 && def.displayText[0].lowercaseChar() in 'a'..'z'
-    private val sizeListener = ManagedPreference.OnChangeListener<Int> { _, value ->
-        if (isLetter) mainText.setTextSize(TypedValue.COMPLEX_UNIT_DIP, value.toFloat())
-    }
-    override fun onAttachedToWindow() {
-        super.onAttachedToWindow()
-        if (isLetter) { mainText.setTextSize(TypedValue.COMPLEX_UNIT_DIP, letterSize.getValue().toFloat()); letterSize.registerOnChangeListener(sizeListener) }
-    }
-    override fun onDetachedFromWindow() {
-        letterSize.unregisterOnChangeListener(sizeListener)
-        super.onDetachedFromWindow()
     }
 
     init {
