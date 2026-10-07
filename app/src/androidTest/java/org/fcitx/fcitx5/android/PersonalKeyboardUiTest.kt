@@ -140,7 +140,9 @@ class PersonalKeyboardUiTest {
             tap(x, bounds.exactCenterY())
             await("Screen tap moves the pinyin caret") { fcitx.runImmediately { inputPanelCached.preedit.cursor } == insertion }
             type("a")
-            assertEquals("nihao", fcitx.runOnReady { inputPanelCached.preedit.toString().replace(" ", "") })
+            await("Inserted letter appears at the tapped pinyin caret") {
+                fcitx.runImmediately { inputPanelCached.preedit.toString().replace(" ", "") } == "nihao"
+            }
             screenshot("pinyin-edit")
 
             fcitx.runOnReady { reset(); activateIme("anthy") }
