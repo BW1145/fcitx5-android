@@ -91,22 +91,19 @@ class PersonalRimeTest {
                         view.measure(View.MeasureSpec.makeMeasureSpec(width, View.MeasureSpec.EXACTLY),
                             View.MeasureSpec.makeMeasureSpec(height, View.MeasureSpec.EXACTLY))
                         view.layout(0, 0, width, height)
-                        val ink = when (view.def.variant) {
-                            KeyDef.Appearance.Variant.Normal -> theme.keyTextColor
-                            KeyDef.Appearance.Variant.Accent -> theme.accentKeyTextColor
-                            else -> theme.altKeyTextColor
-                        }
-                        fun inkPixels(size: Int): Int {
+                        // Render content on transparency so antialiased edges contribute coverage.
+                        view.getChildAt(0).apply { background = null; foreground = null }
+                        fun inkCoverage(size: Int): Int {
                             preference.setValue(size)
                             val bitmap = android.graphics.Bitmap.createBitmap(width, height, android.graphics.Bitmap.Config.ARGB_8888)
                             view.draw(android.graphics.Canvas(bitmap))
                             val pixels = IntArray(width * height)
                             bitmap.getPixels(pixels, 0, width, 0, 0, width, height)
                             bitmap.recycle()
-                            return pixels.count { it == ink }
+                            return pixels.sumOf { android.graphics.Color.alpha(it) }
                         }
-                        val small = inkPixels(16)
-                        val large = inkPixels(38)
+                        val small = inkCoverage(16)
+                        val large = inkCoverage(38)
                         assertTrue("${view.javaClass.simpleName} must enlarge in orientation $orientation ($small -> $large)", large > small && small > 0)
                         assertEquals(width, view.width)
                         assertEquals(height, view.height)

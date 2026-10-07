@@ -104,7 +104,18 @@ class PersonalKeyboardUiTest {
         var savedSearchEntry: org.fcitx.fcitx5.android.data.SavedContentStore.Entry? = null
         val fcitx = FcitxDaemon.connect(javaClass.name)
         try {
-            await("Keyboard is visible") { imeNodes().any { it.viewIdResourceName?.endsWith(":id/button_space") == true } }
+            await("Keyboard is visible") {
+                automation.rootInActiveWindow?.let { root ->
+                    val activeNodes = nodes(root)
+                    if (activeNodes.any { it.packageName?.toString() == "android" &&
+                            it.text?.toString()?.contains("Pixel Launcher") == true &&
+                            it.text?.toString()?.contains("responding") == true }) {
+                        activeNodes.firstOrNull { it.text?.toString() == "Close app" }
+                            ?.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+                    }
+                }
+                imeNodes().any { it.viewIdResourceName?.endsWith(":id/button_space") == true }
+            }
             fcitx.runOnReady { }
             await("Initial keyboard engine is active") {
                 fcitx.runImmediately { inputMethodEntryCached.uniqueName in listOf("keyboard-us", "rime") }
