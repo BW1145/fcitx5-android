@@ -326,6 +326,11 @@ class NumPadKey(
         variant = variant
     ),
     setOf(
-        Behavior.Press(KeyAction.SymAction(KeySym(sym), NumLockState))
+        Behavior.Press(
+            // Numpad digits insert text even when Rime has prediction candidates.
+            if (sym in FcitxKeyMapping.FcitxKey_KP_0..FcitxKeyMapping.FcitxKey_KP_9)
+                KeyAction.CommitAction(displayText)
+            else KeyAction.SymAction(KeySym(sym), NumLockState)
+        )
     )
 )

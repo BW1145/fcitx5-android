@@ -79,6 +79,12 @@ class PersonalKeyboardUiTest {
         }
     }
 
+    private fun keyText(text: String) {
+        await("Keyboard key $text is visible") { imeNodes().any { it.text?.toString() == text } }
+        tapNode(imeNodes().filter { it.text?.toString() == text }
+            .maxBy { node -> Rect().also(node::getBoundsInScreen).centerY() })
+    }
+
     private fun screenshot(name: String) {
         val bitmap = requireNotNull(automation.takeScreenshot())
         val descriptors = automation.executeShellCommandRw("dd of=/data/local/tmp/fcitx5-$name.png")
@@ -102,6 +108,8 @@ class PersonalKeyboardUiTest {
         shell("ime set $ime")
         activityRule.launchActivity(null)
         var savedSearchEntry: org.fcitx.fcitx5.android.data.SavedContentStore.Entry? = null
+        val symbolLayout = org.fcitx.fcitx5.android.data.prefs.AppPrefs.getInstance().internal.lastSymbolLayout
+        val originalSymbolLayout = symbolLayout.getValue()
         val fcitx = FcitxDaemon.connect(javaClass.name)
         try {
             await("Keyboard is visible") {
@@ -186,7 +194,52 @@ class PersonalKeyboardUiTest {
                 value==committed+"搜索插入成功"
             }
 
+            // Exercise the visible numeric keypad while next-word predictions are active.
+            symbolLayout.setValue(org.fcitx.fcitx5.android.input.keyboard.NumberKeyboard.Name)
+            fcitx.runOnReady { reset() }
+            type("nihao")
+            await("Chinese candidate is visible before entering numbers") {
+                imeNodes().any { it.text?.toString() == "你好" }
+            }
+            keyText("你好")
+            val beforeNumbers = committed + "搜索插入成功你好"
+            await("Chinese text is committed before entering numbers") {
+                var value = ""
+                instrumentation.runOnMainSync { value = activityRule.activity.editor.text.toString() }
+                value == beforeNumbers
+            }
+            await("Next-word predictions are active before switching layouts") {
+                fcitx.runImmediately { getCandidates(0, 10).isNotEmpty() }
+            }
+            keyText("?123")
+            await("Numeric keypad is visible") { imeNodes().any { it.text?.toString() == "ABC" } }
+            type("1234567890")
+            await("All numeric keypad digits insert after Chinese text") {
+                var value = ""
+                instrumentation.runOnMainSync { value = activityRule.activity.editor.text.toString() }
+                value == beforeNumbers + "1234567890"
+            }
+
+            // A pending pinyin composition must be committed before the literal digit.
+            keyText("ABC")
+            await("Alphabet keyboard is visible again") {
+                imeNodes().any { it.viewIdResourceName?.endsWith(":id/button_space") == true }
+            }
+            type("nihao")
+            await("Pinyin is pending before entering a digit") {
+                fcitx.runImmediately { inputPanelCached.preedit.toString().replace(" ", "") == "nihao" }
+            }
+            keyText("?123")
+            await("Numeric keypad is visible with pending pinyin") { imeNodes().any { it.text?.toString() == "ABC" } }
+            type("2")
+            await("Pending Chinese composition is followed by the literal digit") {
+                var value = ""
+                instrumentation.runOnMainSync { value = activityRule.activity.editor.text.toString() }
+                value == beforeNumbers + "1234567890你好2"
+            }
+
         } finally {
+            symbolLayout.setValue(originalSymbolLayout)
             savedSearchEntry?.let { org.fcitx.fcitx5.android.data.SavedContentStore.delete(it.id) }
             screenshot("keyboard-final")
             activityRule.finishActivity()
