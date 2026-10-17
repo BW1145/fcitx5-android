@@ -40,6 +40,10 @@ def patch_sources():
     replace(rime / "src/rime/service.h", " private:\n  void OnCommit", "  the<Engine> engine_;\n\n private:\n  void OnCommit")
     replace(rime / "src/rime_api_impl.h", "#include <rime/switches.h>", "#include <rime/switches.h>\n#include <rime/engine.h>\n#include <rime/switcher.h>")
     replace(rime / "src/rime_api_impl.h", "  ctx->set_option(option, !!value);", """  ctx->set_option(option, !!value);
+  // Rebuild zero-input predictions immediately when their option changes.
+  if (std::string(option) == "prediction" && ctx->input().empty()) {
+    ctx->Clear();
+  }
   auto switcher = session->engine_->switcher_;
   if (switcher && switcher->IsAutoSave(option)) {
     if (Config* user_config = switcher->user_config()) {
@@ -64,6 +68,13 @@ def patch_sources():
     replace(translator, "  auto result = New<ScriptTranslation>(", "  auto* active_poet = engine_->context()->get_option(\"octagram\") ? poet_.get() : plain_poet_.get();\n  auto result = New<ScriptTranslation>(")
     replace(translator, "this, corrector_.get(), poet_.get(), input", "this, corrector_.get(), active_poet, input")
     replace(translator, "return poet_->ContextualWeighted", "return active_poet->ContextualWeighted")
+    replace(rime / "src/rime/gear/poet.cc",
+            "inline static Grammar* create_grammar(Config* config) {",
+            "inline static Grammar* create_grammar(Config* config) {\n  if (!config) return nullptr;")
+    # Publish recomputed candidates after a menu action, just as after a key event.
+    replace(ROOT / "plugin/rime/src/main/cpp/fcitx5-rime/src/rimeaction.cpp",
+            "    api->set_option(session, option_.c_str(), !oldValue);",
+            "    api->set_option(session, option_.c_str(), !oldValue);\n    state->updateUI(ic);")
     predict = WORK / "librime-predict/src/predict_engine.cc"
     replace(predict, '#include "predict_db.h"', '#include "predict_db.h"\n#include <opencc/Config.hpp>\n#include <opencc/Converter.hpp>')
     replace(predict, "  if (const auto* candidates = db_->Lookup(context_query)) {", """  const auto* candidates = db_->Lookup(context_query);

@@ -158,13 +158,22 @@ class PersonalRimeTest {
             fun allActions(actions:Array<org.fcitx.fcitx5.android.core.Action>):List<org.fcitx.fcitx5.android.core.Action> = actions.flatMap { listOf(it)+allActions(it.menu ?: emptyArray()) }
             val modelToggle=allActions(fcitx.statusArea()).firstOrNull { it.shortText.startsWith("模型增强") }
             assertTrue("Octagram toggle must be exposed in Rime options",modelToggle!=null)
+            "biezaishuawomenwan".forEach { fcitx.sendKey(it) }
+            val enhancedWords = fcitx.getCandidates(0, 10).map { it.text }
             fcitx.activateAction(modelToggle!!.id)
             assertTrue("Model can be switched off",allActions(fcitx.statusArea()).any { it.shortText.startsWith("模型关闭") })
+            val ordinaryWords = fcitx.getCandidates(0, 10).map { it.text }
+            assertTrue("Model toggle must immediately change sentence candidates: $enhancedWords -> $ordinaryWords",
+                enhancedWords.isNotEmpty() && ordinaryWords.isNotEmpty() && enhancedWords != ordinaryWords)
             fcitx.reset()
             fcitx.focus(false);fcitx.focus()
             assertTrue("Model toggle must survive focus changes",allActions(fcitx.statusArea()).any { it.shortText.startsWith("模型关闭") })
             fcitx.activateAction(allActions(fcitx.statusArea()).first { it.shortText.startsWith("模型关闭") }.id)
             assertTrue("Model can be switched back on",allActions(fcitx.statusArea()).any { it.shortText.startsWith("模型增强") })
+            "biezaishuawomenwan".forEach { fcitx.sendKey(it) }
+            assertEquals("Re-enabling the model restores enhanced sentence candidates",
+                enhancedWords, fcitx.getCandidates(0, 10).map { it.text })
+            fcitx.reset()
             "nihao".forEach { fcitx.sendKey(it) }
             val hello=fcitx.getCandidates(0,10).indexOfFirst { it.text=="你好" }
             assertTrue(hello>=0)
@@ -172,6 +181,20 @@ class PersonalRimeTest {
             val nextWords=fcitx.getCandidates(0,10).map { it.text }
             assertTrue("Predict should offer next-word candidates after committing a word",nextWords.isNotEmpty())
             assertTrue("Predict should follow simplified Chinese mode: $nextWords","吗" in nextWords && "嗎" !in nextWords)
+            fcitx.activateAction(allActions(fcitx.statusArea()).first { it.shortText.startsWith("联想开启") }.id)
+            assertTrue("Disabling prediction removes displayed next-word candidates immediately",
+                fcitx.getCandidates(0, 10).isEmpty())
+            fcitx.reset()
+            fcitx.focus(false); fcitx.focus()
+            assertTrue("Prediction remains disabled after focus changes",
+                allActions(fcitx.statusArea()).any { it.shortText.startsWith("联想关闭") })
+            "nihao".forEach { fcitx.sendKey(it) }
+            fcitx.select(fcitx.getCandidates(0, 10).indexOfFirst { it.text == "你好" })
+            assertTrue("Committing Chinese while prediction is disabled produces no next-word candidates",
+                fcitx.getCandidates(0, 10).isEmpty())
+            fcitx.activateAction(allActions(fcitx.statusArea()).first { it.shortText.startsWith("联想关闭") }.id)
+            assertTrue("Re-enabling prediction immediately restores next-word candidates",
+                fcitx.getCandidates(0, 10).isNotEmpty())
             fcitx.reset()
 
             candidates("rq") { words -> words.any { it.matches(Regex("\\d{4}-\\d{2}-\\d{2}")) } }
