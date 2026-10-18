@@ -151,6 +151,8 @@ class PersonalRimeTest {
             assertEquals(listOf("keyboard-us", "rime", "anthy"), fcitx.enabledIme().map { it.uniqueName })
             assertEquals("rime", fcitx.currentIme().uniqueName)
             assertFalse(AppPrefs.getInstance().clipboard.clipboardListening.getValue())
+            assertTrue("Toolbar defaults to expanded", AppPrefs.getInstance().keyboard.expandToolbarByDefault.getValue())
+            assertTrue("An unused editor has no starter prediction candidates", fcitx.getCandidates(0, 10).isEmpty())
             candidates("nihao") { "你好" in it }
             candidates("shuawomenwan") { "耍我们玩" in it }
             candidates("mintian") { "明天" in it }
@@ -195,6 +197,17 @@ class PersonalRimeTest {
             fcitx.activateAction(allActions(fcitx.statusArea()).first { it.shortText.startsWith("联想关闭") }.id)
             assertTrue("Re-enabling prediction immediately restores next-word candidates",
                 fcitx.getCandidates(0, 10).isNotEmpty())
+            val forwardedDelete = async(start = CoroutineStart.UNDISPATCHED) {
+                withTimeout(5_000) {
+                    fcitx.eventFlow.filterIsInstance<FcitxEvent.KeyEvent>().first {
+                        it.data.sym.sym == FcitxKeyMapping.FcitxKey_BackSpace
+                    }
+                }
+            }
+            fcitx.sendKey(FcitxKeyMapping.FcitxKey_BackSpace)
+            forwardedDelete.await()
+            assertTrue("Backspace clears prediction candidates while forwarding deletion to the editor",
+                fcitx.getCandidates(0, 10).isEmpty())
             fcitx.reset()
 
             candidates("rq") { words -> words.any { it.matches(Regex("\\d{4}-\\d{2}-\\d{2}")) } }

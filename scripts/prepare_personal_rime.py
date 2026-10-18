@@ -75,6 +75,12 @@ def patch_sources():
     replace(ROOT / "plugin/rime/src/main/cpp/fcitx5-rime/src/rimeaction.cpp",
             "    api->set_option(session, option_.c_str(), !oldValue);",
             "    api->set_option(session, option_.c_str(), !oldValue);\n    state->updateUI(ic);")
+    predictor = WORK / "librime-predict/src/predictor.cc"
+    # Suggestions follow committed text; an empty editor starts with its toolbar.
+    replace(predictor, '    PredictAndUpdate(ctx, "$");\n', "")
+    # Dismissing predictions also lets the same Backspace reach the editor.
+    replace(predictor, "      ctx->Clear();\n      return kAccepted;",
+            "      ctx->Clear();\n      return keycode == XK_BackSpace ? kNoop : kAccepted;")
     predict = WORK / "librime-predict/src/predict_engine.cc"
     replace(predict, '#include "predict_db.h"', '#include "predict_db.h"\n#include <opencc/Config.hpp>\n#include <opencc/Converter.hpp>')
     replace(predict, "  if (const auto* candidates = db_->Lookup(context_query)) {", """  const auto* candidates = db_->Lookup(context_query);

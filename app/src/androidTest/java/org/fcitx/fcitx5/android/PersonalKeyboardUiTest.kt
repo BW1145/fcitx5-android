@@ -106,7 +106,8 @@ class PersonalKeyboardUiTest {
         shell("settings put secure show_ime_with_hard_keyboard 1")
         shell("ime enable $ime")
         shell("ime set $ime")
-        activityRule.launchActivity(null)
+        activityRule.launchActivity(android.content.Intent(context, PersonalInputTestActivity::class.java)
+            .putExtra(PersonalInputTestActivity.EXTRA_TEST_EDITOR_ENTRY, true))
         var savedSearchEntry: org.fcitx.fcitx5.android.data.SavedContentStore.Entry? = null
         val symbolLayout = org.fcitx.fcitx5.android.data.prefs.AppPrefs.getInstance().internal.lastSymbolLayout
         val originalSymbolLayout = symbolLayout.getValue()
@@ -134,6 +135,37 @@ class PersonalKeyboardUiTest {
             }
             await("Rime Ice has finished its initial deployment", timeout = 180_000) {
                 fcitx.runImmediately { inputMethodEntryCached.subMode.name == "雾凇拼音" }
+            }
+            val clipboardLabel = context.getString(R.string.clipboard)
+            await("Toolbar is expanded on entering the first editor") {
+                imeNodes().any { it.contentDescription?.toString() == clipboardLabel }
+            }
+            key(R.id.button_backspace)
+            await("First Backspace deletes existing editor text") {
+                var value = ""
+                instrumentation.runOnMainSync { value = activityRule.activity.editor.text.toString() }
+                value == "测试A"
+            }
+            val hideToolbarLabel = context.getString(R.string.hide_toolbar)
+            tapNode(imeNodes().first { it.contentDescription?.toString() == hideToolbarLabel })
+            await("Toolbar can be collapsed manually") {
+                imeNodes().none { it.contentDescription?.toString() == clipboardLabel }
+            }
+            instrumentation.runOnMainSync { activityRule.activity.otherEditor.requestFocus() }
+            instrumentation.waitForIdleSync()
+            await("Toolbar expands when entering another editor") {
+                imeNodes().any { it.contentDescription?.toString() == clipboardLabel }
+            }
+            key(R.id.button_backspace)
+            await("First Backspace deletes text in the newly focused editor") {
+                var value = ""
+                instrumentation.runOnMainSync { value = activityRule.activity.otherEditor.text.toString() }
+                value == "切换C"
+            }
+            instrumentation.runOnMainSync { activityRule.activity.editor.requestFocus() }
+            instrumentation.waitForIdleSync()
+            await("Toolbar remains expanded when returning to the original editor") {
+                imeNodes().any { it.contentDescription?.toString() == clipboardLabel }
             }
             type("niho")
             await("Pinyin bar is visible") { imeNodes().any { it.text?.toString()?.startsWith("ni ho") == true } }
