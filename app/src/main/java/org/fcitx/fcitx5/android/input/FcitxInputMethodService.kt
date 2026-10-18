@@ -29,6 +29,7 @@ import android.view.inputmethod.EditorInfo
 import android.view.inputmethod.InlineSuggestionsRequest
 import android.view.inputmethod.InlineSuggestionsResponse
 import android.view.inputmethod.InputMethodSubtype
+import android.view.inputmethod.InputConnection
 import android.widget.FrameLayout
 import android.widget.Toast
 import android.widget.inline.InlinePresentationSpec
@@ -42,6 +43,9 @@ import androidx.autofill.inline.v1.InlineSuggestionUi
 import androidx.core.view.updateLayoutParams
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.CoroutineStart
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.consumeEach
@@ -67,6 +71,8 @@ import org.fcitx.fcitx5.android.data.theme.ThemeManager
 import org.fcitx.fcitx5.android.input.cursor.CursorRange
 import org.fcitx.fcitx5.android.input.cursor.CursorTracker
 import org.fcitx.fcitx5.android.input.editing.BulkDeletion
+import org.fcitx.fcitx5.android.input.clipboard.ContentSearchPanel
+import org.fcitx.fcitx5.android.input.keyboard.KeyAction
 import org.fcitx.fcitx5.android.utils.InputMethodUtil
 import org.fcitx.fcitx5.android.utils.alpha
 import org.fcitx.fcitx5.android.utils.forceShowSelf
@@ -86,7 +92,57 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
 
     private lateinit var fcitx: FcitxConnection
 
-    private var jobs = Channel<Job>(capacity = Channel.UNLIMITED)
+    private val jobs = Channel<Job>(capacity = Channel.UNLIMITED, onUndeliveredElement = { it.cancel() })
+
+    private sealed class InputDispatch {
+        data class Event(val event: FcitxEvent<*>) : InputDispatch()
+        data class Barrier(val completion: CompletableDeferred<Unit>) : InputDispatch()
+    }
+    private val inputEvents = Channel<InputDispatch>(Channel.UNLIMITED, onUndeliveredElement = {
+        if (it is InputDispatch.Barrier) it.completion.cancel()
+    })
+    private fun isEditorEvent(event: FcitxEvent<*>) = event is FcitxEvent.CommitStringEvent ||
+        event is FcitxEvent.ClientPreeditEvent || event is FcitxEvent.DeleteSurroundingEvent ||
+        event is FcitxEvent.KeyEvent
+
+    private val inputEventListener: (FcitxEvent<*>) -> Unit = {
+        if (isEditorEvent(it)) inputEvents.trySend(InputDispatch.Event(it))
+    }
+    private var contentSearchTarget: ContentSearchPanel? = null
+    private var contentSearchConnection: InputConnection? = null
+    private var contentSearchEditorSession = 0L
+    private var editorSession = 0L
+    @Volatile var inputActionToken = 0L
+        private set
+
+    fun isCurrentInputTarget(token: Long) = inputActionToken == token
+
+    /** Input jobs are discarded when their editor/search session has ended. */
+    fun postInputJob(token: Long = inputActionToken, block: suspend FcitxAPI.() -> Unit): Job =
+        postFcitxJob { if (isCurrentInputTarget(token)) block() }
+
+    suspend fun onInputTarget(token: Long, block: () -> Unit) {
+        withContext(Dispatchers.Main) { if (isCurrentInputTarget(token)) block() }
+    }
+
+    /** A marker in the same lossless channel as native callbacks, acknowledged by Main. */
+    suspend fun awaitInputEvents(api: FcitxAPI) {
+        val completion = CompletableDeferred<Unit>(lifecycleScope.coroutineContext[Job])
+        api.enqueueInputBarrier {
+            if (inputEvents.trySend(InputDispatch.Barrier(completion)).isFailure) completion.cancel()
+        }
+        completion.await()
+    }
+
+    fun selectCandidate(index: Int) {
+        if (contentSearchTarget?.active == false) return
+        postInputJob { select(index) }
+    }
+
+    fun movePreeditCursor(position: Int) {
+        if (contentSearchTarget?.active == false) return
+        postInputJob { moveCursor(position) }
+    }
 
     private val cachedKeyEvents = LruCache<Int, KeyEvent>(78)
     private var cachedKeyEventIndex = 0
@@ -126,6 +182,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     private val bulkDeletion = BulkDeletion()
 
     fun clearBeforeCursor() {
+        if (handleSearchAction(KeyAction.MacroAction(listOf(org.fcitx.fcitx5.android.data.KeyMacros.Step("clear"))))) return
         val ic = currentInputConnection ?: return
         val cursor = selection.latest.start
         if (selection.latest.isNotEmpty()) ic.setSelection(cursor, cursor)
@@ -137,7 +194,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     }
 
     val currentInputSelection: CursorRange
-        get() = selection.latest
+        get() = contentSearchTarget?.takeIf { it.active }?.selection ?: selection.latest
 
     private val composing = CursorRange()
     private var composingText = FormattedText.Empty
@@ -163,6 +220,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     )
 
     private fun replaceInputView(theme: Theme): InputView {
+        closeContentSearch()
         val newInputView = InputView(this, fcitx, theme)
         setInputView(newInputView)
         inputDeviceMgr.setInputView(newInputView)
@@ -213,7 +271,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         val job = fcitx.lifecycleScope.launch(start = CoroutineStart.LAZY) {
             fcitx.runOnReady(block)
         }
-        jobs.trySend(job)
+        if (jobs.trySend(job).isFailure) job.cancel()
         return job
     }
 
@@ -222,9 +280,20 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         lifecycleScope.launch {
             jobs.consumeEach { it.join() }
         }
+        // Register synchronously before accepting input. UI components still use eventFlow,
+        // while commits/deletions here must not be dropped or overtake a target switch.
+        fcitx.runImmediately { addInputEventListener(inputEventListener) }
+        lifecycleScope.launch {
+            for (message in inputEvents) {
+                when (message) {
+                    is InputDispatch.Event -> handleFcitxEvent(message.event)
+                    is InputDispatch.Barrier -> message.completion.complete(Unit)
+                }
+            }
+        }
         lifecycleScope.launch {
             fcitx.runImmediately { eventFlow }.collect {
-                handleFcitxEvent(it)
+                if (!isEditorEvent(it)) handleFcitxEvent(it)
             }
         }
         pkgNameCache = PackageNameCache(this)
@@ -244,18 +313,49 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         lastKnownConfig = resources.configuration
     }
 
-    fun closeContentSearch() { inputView?.contentSearch?.takeIf { it.active }?.close() }
+    fun closeContentSearch() { contentSearchTarget?.close() }
     fun openContentSearch(saved: Boolean) { inputView?.contentSearch?.open(saved) }
-    fun handleSearchAction(action: org.fcitx.fcitx5.android.input.keyboard.KeyAction): Boolean {
-        val search=inputView?.contentSearch?.takeIf { it.active } ?: return false
-        return when(action) {
-            is org.fcitx.fcitx5.android.input.keyboard.KeyAction.CommitAction -> { search.commit(action.text);true }
-            is org.fcitx.fcitx5.android.input.keyboard.KeyAction.MacroAction -> { if(action.steps.any { it.action=="clear" }) search.clear();true }
-            else -> false
+
+    fun beginContentSearch(panel: ContentSearchPanel, session: Long) {
+        val previous = contentSearchTarget
+        if (previous != null && previous !== panel) previous.close()
+        if (previous == null) finishComposing()
+        inputActionToken++
+        contentSearchTarget = panel
+        contentSearchConnection = currentInputConnection
+        contentSearchEditorSession = editorSession
+        postFcitxJob {
+            reset()
+            awaitInputEvents(this)
+            withContext(Dispatchers.Main) {
+                if (contentSearchTarget === panel) panel.ready(session)
+            }
         }
     }
+
+    fun endContentSearch(panel: ContentSearchPanel, session: Long, result: String?) {
+        inputActionToken++
+        val originalConnection = contentSearchConnection
+        val originalEditor = contentSearchEditorSession
+        postFcitxJob {
+            reset()
+            awaitInputEvents(this)
+            withContext(Dispatchers.Main) {
+                if (contentSearchTarget === panel && panel.closed(session)) {
+                    contentSearchTarget = null
+                    contentSearchConnection = null
+                    if (result != null && editorSession == originalEditor &&
+                        currentInputConnection === originalConnection) commitTextToEditor(result)
+                }
+            }
+        }
+    }
+
+    fun handleSearchAction(action: KeyAction): Boolean =
+        contentSearchTarget?.takeIf { it.active }?.handleAction(action) == true
+
     private fun handleFcitxEvent(event: FcitxEvent<*>) {
-        if(inputView?.contentSearch?.handle(event)==true) return
+        if (contentSearchTarget?.handle(event) == true) return
         when (event) {
             is FcitxEvent.CommitStringEvent -> {
                 commitText(event.data.text, event.data.cursor)
@@ -448,7 +548,19 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     }
 
     fun commitText(text: String, cursor: Int = -1) {
-        inputView?.contentSearch?.takeIf { it.active }?.let { it.commit(text,cursor); return }
+        contentSearchTarget?.let {
+            if (it.active) it.commitLiteral(text, cursor)
+            else {
+                // A new app-directed action after Cancel follows the closing barrier.
+                val token = inputActionToken
+                postInputJob(token) { onInputTarget(token) { commitTextToEditor(text, cursor) } }
+            }
+            return
+        }
+        commitTextToEditor(text, cursor)
+    }
+
+    private fun commitTextToEditor(text: String, cursor: Int = -1) {
         val ic = currentInputConnection ?: return
         // when composing text equals commit content, finish composing text as-is
         if (composing.isNotEmpty() && composingText.toString() == text) {
@@ -514,6 +626,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     }
 
     fun deleteSelection() {
+        contentSearchTarget?.takeIf { it.active }?.let { it.deleteSelection(); return }
         val lastSelection = selection.latest
         if (lastSelection.isEmpty()) return
         selection.predict(lastSelection.start)
@@ -526,6 +639,10 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         ctrl: Boolean = false,
         shift: Boolean = false
     ) {
+        contentSearchTarget?.takeIf { it.active }?.let {
+            it.combinationKey(keyEventCode, alt, ctrl, shift)
+            return
+        }
         var metaState = 0
         if (alt) metaState = KeyEvent.META_ALT_ON or KeyEvent.META_ALT_LEFT_ON
         if (ctrl) metaState = metaState or KeyEvent.META_CTRL_ON or KeyEvent.META_CTRL_LEFT_ON
@@ -542,6 +659,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     }
 
     fun applySelectionOffset(offsetStart: Int, offsetEnd: Int = 0) {
+        if (handleSearchAction(KeyAction.MoveSelectionAction(offsetStart, offsetEnd))) return
         val lastSelection = selection.latest
         currentInputConnection?.also {
             val start = max(lastSelection.start + offsetStart, 0)
@@ -553,6 +671,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     }
 
     fun cancelSelection() {
+        contentSearchTarget?.takeIf { it.active }?.let { it.cancelSelection(); return }
         val lastSelection = selection.latest
         if (lastSelection.isEmpty()) return
         val end = lastSelection.end
@@ -671,7 +790,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         if (sym != null) {
             val states = KeyStates.fromKeyEvent(event)
             val up = event.action == KeyEvent.ACTION_UP
-            postFcitxJob {
+            postInputJob {
                 sendKey(sym, states, event.scanCode, up, timestamp)
             }
             return true
@@ -763,6 +882,9 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     }
 
     override fun onStartInput(attribute: EditorInfo, restarting: Boolean) {
+        editorSession++
+        inputActionToken++
+        closeContentSearch()
         // update selection as soon as possible
         // sometimes when restarting input, onUpdateSelection happens before onStartInput, and
         // initialSel{Start,End} is outdated. but it's the client app's responsibility to send
@@ -826,13 +948,15 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         // onUpdateSelection can left behind when user types quickly enough, eg. long press backspace
         cursorUpdateIndex += 1
         Timber.d("onUpdateSelection: old=[$oldSelStart,$oldSelEnd] new=[$newSelStart,$newSelEnd] cand=[$candidatesStart,$candidatesEnd]")
-        handleCursorUpdate(
-            newSelStart,
-            newSelEnd,
-            candidatesStart,
-            candidatesEnd,
-            cursorUpdateIndex
-        )
+        if (contentSearchTarget != null) {
+            // The host editor may move while the search engine is composing locally.
+            // Update its saved cursor without moving/resetting the search composition.
+            selection.resetTo(newSelStart, newSelEnd)
+        } else {
+            handleCursorUpdate(
+                newSelStart, newSelEnd, candidatesStart, candidatesEnd, cursorUpdateIndex
+            )
+        }
         inputView?.updateSelection(newSelStart, newSelEnd)
     }
 
@@ -1086,7 +1210,9 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     }
 
     override fun onFinishInputView(finishingInput: Boolean) {
-        inputView?.contentSearch?.close()
+        closeContentSearch()
+        editorSession++
+        inputActionToken++
         Timber.d("onFinishInputView: finishingInput=$finishingInput")
         decorLocationUpdated = false
         inputDeviceMgr.onFinishInputView()
@@ -1123,6 +1249,10 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     }
 
     override fun onDestroy() {
+        inputActionToken++
+        fcitx.runImmediately { removeInputEventListener(inputEventListener) }
+        inputEvents.cancel()
+        jobs.cancel()
         recreateInputViewPrefs.forEach {
             it.unregisterOnChangeListener(recreateInputViewListener)
         }
@@ -1160,3 +1290,4 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         const val DeleteSurroundingFlag = "org.fcitx.fcitx5.android.DELETE_SURROUNDING"
     }
 }
+

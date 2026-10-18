@@ -35,7 +35,7 @@ object ToolbarActions {
         return StatusAreaEntry.Android(context.getString(label),icon,type)
     }
     fun perform(type: Type, context: Context, service: FcitxInputMethodService, wm: InputWindowManager, fcitx: FcitxConnection) {
-        service.closeContentSearch()
+        if (type != Type.Undo && type != Type.Redo) service.closeContentSearch()
         when(type) {
             Type.Undo -> service.sendCombinationKeyEvents(KeyEvent.KEYCODE_Z, ctrl=true)
             Type.Redo -> service.sendCombinationKeyEvents(KeyEvent.KEYCODE_Z, ctrl=true,shift=true)
@@ -50,3 +50,4 @@ object ToolbarActions {
         }
     }
 }
+

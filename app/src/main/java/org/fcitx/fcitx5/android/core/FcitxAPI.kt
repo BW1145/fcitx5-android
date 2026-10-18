@@ -24,6 +24,21 @@ interface FcitxAPI {
      */
     val eventFlow: SharedFlow<FcitxEvent<*>>
 
+    /**
+     * Receive native events synchronously, before the lossy UI event flow. Listeners
+     * must only enqueue work: they run on the engine thread and must not access Views.
+     * Register before enqueueing input, and remove the listener when its owner stops.
+     */
+    fun addInputEventListener(listener: (FcitxEvent<*>) -> Unit)
+    fun removeInputEventListener(listener: (FcitxEvent<*>) -> Unit)
+
+    /**
+     * Run [enqueue] on the same engine thread after previously submitted operations.
+     * Enqueue a marker into the listener's queue and await it on the consumer to know
+     * that all preceding native events have actually been handled.
+     */
+    suspend fun enqueueInputBarrier(enqueue: () -> Unit)
+
     val isReady: Boolean
 
     val inputMethodEntryCached: InputMethodEntry

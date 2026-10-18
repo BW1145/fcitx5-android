@@ -36,7 +36,7 @@ class AndroidAppConventionPlugin : AndroidBaseConventionPlugin() {
         target.extensions.configure<ApplicationExtension> {
             defaultConfig {
                 targetSdk = Versions.targetSdk
-                versionCode = Versions.calculateVersionCode()
+                versionCode = target.versionCodeForAbi()
                 versionName = target.buildVersionName
             }
             buildTypes {
@@ -163,3 +163,4 @@ class AndroidAppConventionPlugin : AndroidBaseConventionPlugin() {
     }
 
 }
+

@@ -5,7 +5,6 @@
 package org.fcitx.fcitx5.android.plugin.clipboard_filter
 
 import android.net.Uri
-import android.net.UrlQuerySanitizer
 import android.util.Log
 import kotlinx.serialization.KSerializer
 import kotlinx.serialization.Serializable
@@ -41,6 +40,7 @@ object ClearURLs {
     }
 
     private val urlPattern = Regex("^https?://", RegexOption.IGNORE_CASE)
+    private val uriSchemePattern = Regex("^[a-z][a-z0-9+.-]*:", RegexOption.IGNORE_CASE)
 
     fun transform(text: String): String {
         if (!urlPattern.matchesAt(text, 0)) return text
@@ -78,14 +78,14 @@ object ClearURLs {
             val rules = provider.rules + provider.referralMarketing
             val uri = Uri.parse(x)
             x = uri.buildUpon()
-                .encodedQuery(filterParams(uri.query, rules))
+                .encodedQuery(filterParams(uri.encodedQuery, rules))
                 /**
                  * clear #fragments too
                  * https://github.com/ClearURLs/Addon/blob/deec80b763179fa5c3559a37e3c9a6f1b28d0886/clearurls.js#L109
-                 * but skip URL encode because of reasons
+                 * preserve the fragment's existing encoding
                  * https://github.com/ClearURLs/Addon/blob/d8da43ac297e5df51a9c7276579ac3332adfa801/core_js/utils/URLHashParams.js#L65
                  */
-                .encodedFragment(filterParams(uri.fragment, rules, encode = false))
+                .encodedFragment(filterParams(uri.encodedFragment, rules))
                 .toString()
         }
         if (matched) {
@@ -94,46 +94,26 @@ object ClearURLs {
         return x
     }
 
-    /**
-     * mimic the js impl
-     * https://github.com/ClearURLs/Addon/blob/deec80b763179fa5c3559a37e3c9a6f1b28d0886/core_js/tools.js#L243
-     */
     private fun decodeURL(str: String): String {
-        var a: String
-        var b: String = str
-        do {
-            a = b
-            b = Uri.decode(b)
-        } while (a != b)
-        return b
+        var target = str
+        // Rules can capture either a URL directly or an encoded redirect parameter.
+        // Once the scheme is visible, remaining escapes belong to the target URL.
+        while (!uriSchemePattern.containsMatchIn(target) && !target.startsWith("//")) {
+            val decoded = Uri.decode(target)
+            // Some rules capture a bare host/path, whose escapes must also survive.
+            if (decoded == target) return str
+            target = decoded
+        }
+        return target
     }
 
-    private fun encodeQuery(str: String) = Uri.encode(str, " ").replace(" ", "+")
-
-    private val querySanitizer = UrlQuerySanitizer().apply {
-        allowUnregisteredParamaters = true
-        unregisteredParameterValueSanitizer = UrlQuerySanitizer.getAllButNulLegal()
-    }
-
-    private fun UrlQuerySanitizer.ParameterValuePair.stringify(encode: Boolean = true): String {
-        val k = if (encode) encodeQuery(mParameter) else mParameter
-        if (mValue.isEmpty()) return k
-        val v = if (encode) encodeQuery(mValue) else mValue
-        return "$k=$v"
-    }
-
-    private fun filterParams(params: String?, rules: List<Regex>, encode: Boolean = true): String? {
+    private fun filterParams(params: String?, rules: List<Regex>): String? {
         if (params.isNullOrEmpty()) return params
-        querySanitizer.parseQuery(params)
-        return querySanitizer.parameterList
-            .filter { param ->
-                /**
-                 * match rules with search parameter keys
-                 * https://github.com/ClearURLs/Addon/blob/deec80b763179fa5c3559a37e3c9a6f1b28d0886/clearurls.js#L122
-                 */
-                rules.all { !it.matches(param.mParameter) }
-            }
-            .joinToString("&") { it.stringify(encode) }
+        // Match decoded keys while keeping each retained parameter byte for byte.
+        return params.split('&').filter { param ->
+            val name = Uri.decode(param.substringBefore('=').replace("+", " "))
+            rules.none { it.matches(name) }
+        }.joinToString("&").ifEmpty { null }
     }
 
     private fun log(msg: String) {

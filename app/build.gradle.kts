@@ -13,8 +13,7 @@ android {
     namespace = "org.fcitx.fcitx5.android"
 
     defaultConfig {
-        applicationId = "org.fcitx.fcitx5.android.bw1145"
-        versionCode = 123
+        applicationId = project.mainApplicationId
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
 
         @Suppress("UnstableApiUsage")
@@ -147,3 +146,4 @@ configurations {
         exclude(group = "com.louiscad.splitties", module = "splitties-systemservices")
     }
 }
+

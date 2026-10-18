@@ -1,9 +1,10 @@
 /* SPDX-License-Identifier: LGPL-2.1-or-later */
 package org.fcitx.fcitx5.android.input.clipboard
 
-import android.icu.text.BreakIterator
+import android.os.Build
 import android.view.View
 import android.widget.*
+import androidx.annotation.RequiresApi
 import com.google.android.flexbox.FlexboxLayout
 import com.google.android.flexbox.FlexWrap
 import org.fcitx.fcitx5.android.R
@@ -21,10 +22,7 @@ class TokenizedContentWindow(private val text:String):InputWindow.ExtendedInputW
     private val wm:InputWindowManager by manager.must()
     override val title get()=context.getString(R.string.split_content)
     private val selected=mutableSetOf<Int>()
-    private val tokens by lazy {
-        val iterator=BreakIterator.getWordInstance(Locale.CHINESE);iterator.setText(text)
-        buildList { var start=iterator.first();var end=iterator.next();while(end!=BreakIterator.DONE) { if(text.substring(start,end).isNotBlank()) add(start until end);start=end;end=iterator.next() } }
-    }
+    private val tokens by lazy { ContentTokenizer.ranges(text) }
     override fun onCreateView():View=ScrollView(context).apply {
         addView(FlexboxLayout(context).apply {
             flexWrap=FlexWrap.WRAP
@@ -51,3 +49,33 @@ class TokenizedContentWindow(private val text:String):InputWindow.ExtendedInputW
     override fun onAttached() {}
     override fun onDetached() {}
 }
+
+internal object ContentTokenizer {
+    fun ranges(text: String): List<IntRange> {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) return IcuTokenizer.ranges(text)
+        val iterator = java.text.BreakIterator.getWordInstance(Locale.CHINESE)
+        iterator.setText(text)
+        return collectRanges(text, iterator.first(), iterator::next)
+    }
+
+    private fun collectRanges(text: String, first: Int, next: () -> Int): List<IntRange> =
+        buildList {
+            var start = first
+            var end = next()
+            while (end != java.text.BreakIterator.DONE) {
+                if (text.substring(start, end).isNotBlank()) add(start until end)
+                start = end
+                end = next()
+            }
+        }
+
+    @RequiresApi(Build.VERSION_CODES.N)
+    private object IcuTokenizer {
+        fun ranges(text: String): List<IntRange> {
+            val iterator = android.icu.text.BreakIterator.getWordInstance(Locale.CHINESE)
+            iterator.setText(text)
+            return collectRanges(text, iterator.first(), iterator::next)
+        }
+    }
+}
+

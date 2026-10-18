@@ -46,6 +46,25 @@ val Project.buildVersionName
         runCmd("git describe --tags --long --always", Versions.baseVersionName)
     }
 
+/** One application identity shared by the IME and every external plugin. */
+val Project.mainApplicationId
+    get() = ep("MAIN_APPLICATION_ID", "mainApplicationId") {
+        Versions.defaultMainApplicationId
+    }
+
+/** Release pipelines set the final APK code, including ABI-filtered outputs. */
+val Project.buildVersionCode: Int?
+    get() = epn("BUILD_VERSION_CODE", "buildVersionCode")?.let { raw ->
+        val code = raw.toIntOrNull()
+        require(code != null && code in 1..2100000000) {
+            "BUILD_VERSION_CODE / buildVersionCode must be an integer from 1 to 2100000000"
+        }
+        code
+    }
+
+fun Project.versionCodeForAbi(abi: String = Versions.fallbackABI): Int =
+    buildVersionCode ?: Versions.calculateVersionCode(abi)
+
 val Project.buildCommitHash
     get() = ep("BUILD_COMMIT_HASH", "buildCommitHash") {
         runCmd("git rev-parse HEAD", "N/A")
@@ -110,3 +129,4 @@ fun NamedDomainObjectContainer<out ApkSigningConfig>.fromProjectEnv(project: Pro
         keyPassword = project.signKeyPwd
     }
 }
+

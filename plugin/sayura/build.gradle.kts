@@ -11,7 +11,7 @@ android {
     namespace = "org.fcitx.fcitx5.android.plugin.sayura"
 
     defaultConfig {
-        applicationId = "org.fcitx.fcitx5.android.plugin.sayura"
+        applicationId = "${project.mainApplicationId}.plugin.sayura"
 
         @Suppress("UnstableApiUsage")
         externalNativeBuild {
@@ -51,3 +51,4 @@ dependencies {
     implementation(project(":lib:fcitx5"))
     implementation(project(":lib:plugin-base"))
 }
+

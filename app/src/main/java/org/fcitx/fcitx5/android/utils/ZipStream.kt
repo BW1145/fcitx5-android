@@ -6,6 +6,7 @@
 package org.fcitx.fcitx5.android.utils
 
 import java.io.File
+import java.io.IOException
 import java.util.zip.ZipInputStream
 
 /**
@@ -13,17 +14,29 @@ import java.util.zip.ZipInputStream
  */
 fun ZipInputStream.extract(destDir: File): List<File> {
     var entry = nextEntry
-    val canonicalDest = destDir.canonicalPath
+    val canonicalDest = destDir.canonicalFile
+    val destinationPrefix = canonicalDest.path.trimEnd(File.separatorChar) + File.separator
     while (entry != null) {
-        if (!entry.isDirectory) {
-            val file = File(destDir, entry.name)
-            if (!file.canonicalPath.startsWith(canonicalDest)) throw SecurityException()
-            copyTo(file.outputStream())
+        val file = File(canonicalDest, entry.name).canonicalFile
+        val isRootDirectory = entry.isDirectory && file == canonicalDest
+        if (File(entry.name).isAbsolute ||
+            (!isRootDirectory && !file.path.startsWith(destinationPrefix))
+        ) {
+            throw SecurityException("ZIP entry escapes destination: ${entry.name}")
+        }
+        if (entry.isDirectory) {
+            if (!file.isDirectory && !file.mkdirs()) {
+                throw IOException("Cannot create ZIP directory: ${entry.name}")
+            }
         } else {
-            val dir = File(destDir, entry.name)
-            dir.mkdir()
+            val parent = file.parentFile!!
+            if (!parent.isDirectory && !parent.mkdirs()) {
+                throw IOException("Cannot create ZIP parent directory: ${entry.name}")
+            }
+            file.outputStream().use { copyTo(it) }
         }
         entry = nextEntry
     }
     return destDir.listFiles()?.toList() ?: emptyList()
 }
+

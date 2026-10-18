@@ -11,7 +11,7 @@ android {
     namespace = "org.fcitx.fcitx5.android.plugin.rime"
 
     defaultConfig {
-        applicationId = "org.fcitx.fcitx5.android.plugin.rime"
+        applicationId = "${project.mainApplicationId}.plugin.rime"
 
         @Suppress("UnstableApiUsage")
         externalNativeBuild {
@@ -59,3 +59,4 @@ dependencies {
     implementation(project(":lib:fcitx5"))
     implementation(project(":lib:plugin-base"))
 }
+

@@ -17,8 +17,10 @@ object Versions {
     const val defaultBuildTools = "36.1.0"
 
     // NOTE: increase this value to bump version code
-    const val baseVersionCode = 11
+    const val baseVersionCode = 13
     const val baseVersionName = "0.1.3"
+
+    const val defaultMainApplicationId = "org.fcitx.fcitx5.android.bw1145"
 
     val supportedABIs = setOf("armeabi-v7a", "arm64-v8a", "x86", "x86_64")
     const val fallbackABI = "arm64-v8a"
@@ -34,3 +36,4 @@ object Versions {
         return baseVersionCode * 10 + abiId
     }
 }
+

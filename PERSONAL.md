@@ -3,7 +3,7 @@
 本仓库的 personal-ice 分支构建 arm64 安卓单 APK，内置雾凇全拼、Rime 1.17、Octagram 精简简体词模型、Predict 联想及 Anthy 日语。
 
 - 雾凇默认开启拼写纠错、an/ang、en/eng、in/ing 容错，最多生成 5 条整句候选。三个点菜单的雾凇选项提供“模型增强”和“联想开启”开关，选择会保留。
-- 剪贴板和常用内容面板提供搜索；搜索使用当前键盘，输入写入搜索栏。选择结果后插入原输入框。
+- 剪贴板和常用内容面板提供搜索；搜索使用当前键盘，文字、候选、选择、删除和按键宏作用于搜索栏。关闭搜索会清空引擎的待选内容；选择结果后插入原输入框。
 - 长按剪贴板条目可拆词选择，也可对 HTTP/HTTPS 链接执行“清理链接后粘贴”。清理使用打包的 ClearURLs 规则，保留原条目。
 - “工具栏布局”可调整按钮顺序，并将按钮在主栏和三个点菜单之间移动。常用内容默认位于剪贴板旁边。
 - “按键与宏”可选择按键、点击／长按／四向滑动，以及依次执行的文字、按键、编辑动作。按键动作可附加 Ctrl、Alt、Shift。默认长按删除键后上划清空待选拼音；没有待选拼音时清空光标前的文字。
@@ -13,8 +13,13 @@
 
 ## 构建
 
-GitHub Actions 的 Personal Custom APK 工作流依次准备固定源码与离线数据、编译 Rime、编译签名安装包，并在模拟器上执行输入验证。两个检查任务成功后发布到本仓库。
+GitHub Actions 的 Personal Custom APK 工作流依次准备固定源码与离线数据、编译 Rime、编译签名安装包，并在 Android 15 模拟器上执行输入和插件验证，再复用测试安装包执行 Android 6 的兼容回归。构建与两种系统的检查均成功后发布到本仓库。
+
+发布版本名为 `1.1.<工作流运行编号>`，实际 APK 的 `versionCode` 为 `1000 + 工作流运行编号`，所有 ABI 输出使用同一发布版本号。手动构建可以用 `-PbuildVersionName` 和 `-PbuildVersionCode` 指定版本。
+
+主程序与外部插件共用 `mainApplicationId` 构建属性，默认为 `org.fcitx.fcitx5.android.bw1145`；调试主程序使用 `.debug` 后缀。插件的发现入口、服务权限和主程序跳转均由该属性生成。定制版应安装本仓库构建的配套插件。
 
 源码和数据版本、下载地址、SHA-256 记录在 `scripts/personal-rime-dependencies.json`。准备脚本使用原生 Rime 1.17，保留 Android 菜单选项持久化，并为 Octagram 提供普通／模型句子组合器切换。模型及数据库下载发生在构建机器上，应用本身使用离线数据。
 
 剪贴板清理实现参考 [fx-continued](https://github.com/dhangonge/fcitx5-android-fx-continued)，规则来自 [ClearURLs/Rules](https://github.com/ClearURLs/Rules)。各原生库和模型的许可证列于应用的开源许可页面。
+

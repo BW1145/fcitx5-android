@@ -36,7 +36,7 @@ class PreeditComponent : UniqueComponent<PreeditComponent>(), Dependent, InputBr
             horizontalPadding = dp(8)
         }).apply {
             onCursorRequested = { position ->
-                service.postFcitxJob { moveCursor(position) }
+                service.movePreeditCursor(position)
             }
             // TODO make it customizable
             root.alpha = 0.8f
@@ -49,3 +49,4 @@ class PreeditComponent : UniqueComponent<PreeditComponent>(), Dependent, InputBr
         ui.root.visibility = if (ui.visible) View.VISIBLE else View.INVISIBLE
     }
 }
+

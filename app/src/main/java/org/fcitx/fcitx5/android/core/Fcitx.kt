@@ -34,6 +34,15 @@ class Fcitx(private val context: Context) : FcitxAPI, FcitxLifecycleOwner {
 
     override val eventFlow = eventFlow_.asSharedFlow()
 
+    override fun addInputEventListener(listener: (FcitxEvent<*>) -> Unit) =
+        registerFcitxEventHandler(listener)
+
+    override fun removeInputEventListener(listener: (FcitxEvent<*>) -> Unit) =
+        unregisterFcitxEventHandler(listener)
+
+    override suspend fun enqueueInputBarrier(enqueue: () -> Unit) =
+        withFcitxContext { enqueue() }
+
     override val isReady
         get() = lifecycle.currentState == FcitxLifecycle.State.READY
 
@@ -589,3 +598,4 @@ class Fcitx(private val context: Context) : FcitxAPI, FcitxLifecycleOwner {
     }
 
 }
+

@@ -8,8 +8,6 @@ package org.fcitx.fcitx5.android.input.keyboard
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
 import android.view.KeyEvent
 import org.fcitx.fcitx5.android.core.FcitxAPI
 import org.fcitx.fcitx5.android.core.FcitxKeyMapping
@@ -70,7 +68,8 @@ class CommonKeyActionListener :
     private var backspaceStartedWithPreedit = false
 
     // there should be a new fcitx API for this
-    private suspend fun FcitxAPI.commitAndReset() {
+    private suspend fun FcitxAPI.commitAndReset(target: Long) {
+        service.awaitInputEvents(this)
         if (inputMethodEntryCached.languageCode.startsWith("zh")) {
             // Chinese: select 1st candidate, except prediction candidates
             if (clientPreeditCached.isNotEmpty() || inputPanelCached.preedit.isNotEmpty()) {
@@ -79,9 +78,10 @@ class CommonKeyActionListener :
             }
         } else {
             // Other languages: commit preedit as-is
-            service.finishComposing()
+            service.onInputTarget(target) { service.finishComposing() }
         }
         reset()
+        service.awaitInputEvents(this)
     }
 
     private fun showInputMethodPicker() {
@@ -94,22 +94,24 @@ class CommonKeyActionListener :
 
     val listener by lazy {
         KeyActionListener { action, _ ->
-            if(service.handleSearchAction(action)) return@KeyActionListener
+            if (service.handleSearchAction(action)) return@KeyActionListener
+            val target = service.inputActionToken
             when (action) {
                 is KeyAction.MacroAction -> {
                     val preeditOnly = backspaceStartedWithPreedit || !preeditState.isEmpty
-                    service.postFcitxJob {
+                    service.postInputJob(target) {
                         for (step in action.steps) {
                             when (step.action) {
                                 "clear" -> {
                                     reset()
+                                    service.awaitInputEvents(this)
                                     backspaceSwipeState = Stopped
-                                    if (!preeditOnly) withContext(Dispatchers.Main) { service.clearBeforeCursor() }
+                                    if (!preeditOnly) service.onInputTarget(target) { service.clearBeforeCursor() }
                                 }
-                                "text" -> { commitAndReset(); withContext(Dispatchers.Main) { service.commitText(step.text) } }
+                                "text" -> { commitAndReset(target); service.onInputTarget(target) { service.commitText(step.text) } }
                                 else -> {
-                                    commitAndReset()
-                                    withContext(Dispatchers.Main) {
+                                    commitAndReset(target)
+                                    service.onInputTarget(target) {
                                         when (step.action) {
                                             "selectAll" -> service.currentInputConnection?.performContextMenuAction(android.R.id.selectAll)
                                             "copy" -> service.currentInputConnection?.performContextMenuAction(android.R.id.copy)
@@ -131,7 +133,7 @@ class CommonKeyActionListener :
                     backspaceStartedWithPreedit = !preeditState.isEmpty
                 }
                 is KeyAction.EndBackspaceAction -> backspaceStartedWithPreedit = false
-                is FcitxKeyAction -> service.postFcitxJob {
+                is FcitxKeyAction -> service.postInputJob(target) {
                     sendKey(action.act, action.states.states, action.code)
                     if (inputMethodEntryCached.uniqueName == "anthy") {
                         sendKey(action.act, action.states.states, action.code, up = true)
@@ -139,7 +141,7 @@ class CommonKeyActionListener :
                 }
                 is SymAction -> {
                     val preeditOnly = backspaceStartedWithPreedit && action.sym.sym == FcitxKeyMapping.FcitxKey_BackSpace
-                    service.postFcitxJob {
+                    service.postInputJob(target) {
                         if (!preeditOnly || clientPreeditCached.isNotEmpty() || inputPanelCached.preedit.isNotEmpty()) {
                             sendKey(action.sym, action.states)
                             if (inputMethodEntryCached.uniqueName == "anthy") {
@@ -148,22 +150,22 @@ class CommonKeyActionListener :
                         }
                     }
                 }
-                is CommitAction -> service.postFcitxJob {
-                    commitAndReset()
-                    service.lifecycleScope.launch { service.commitText(action.text) }
+                is CommitAction -> service.postInputJob(target) {
+                    commitAndReset(target)
+                    service.onInputTarget(target) { service.commitText(action.text) }
                 }
-                is QuickPhraseAction -> service.postFcitxJob {
-                    commitAndReset()
+                is QuickPhraseAction -> service.postInputJob(target) {
+                    commitAndReset(target)
                     triggerQuickPhrase()
                 }
-                is UnicodeAction -> service.postFcitxJob {
-                    commitAndReset()
+                is UnicodeAction -> service.postInputJob(target) {
+                    commitAndReset(target)
                     triggerUnicode()
                 }
                 is LangSwitchAction -> {
                     when (langSwitchKeyBehavior) {
                         LangSwitchBehavior.Enumerate -> {
-                            service.postFcitxJob {
+                            service.postInputJob(target) {
                                 if (enabledIme().size < 2) {
                                     service.lifecycleScope.launch {
                                         service.showDialog(AddMoreInputMethodsPrompt.build(context))
@@ -174,7 +176,7 @@ class CommonKeyActionListener :
                             }
                         }
                         LangSwitchBehavior.ToggleActivate -> {
-                            service.postFcitxJob {
+                            service.postInputJob(target) {
                                 toggleIme()
                             }
                         }
@@ -208,7 +210,7 @@ class CommonKeyActionListener :
                         Stopped -> {}
                         Selection -> service.deleteSelection()
                         Reset -> if (action.totalCnt < 0) { // swipe left
-                            service.postFcitxJob { reset() }
+                            service.postInputJob(target) { reset() }
                         }
                     }
                     backspaceSwipeState = Stopped
@@ -225,10 +227,10 @@ class CommonKeyActionListener :
                 is SpaceLongPressAction -> {
                     when (spaceKeyLongPressBehavior) {
                         SpaceLongPressBehavior.None -> {}
-                        SpaceLongPressBehavior.Enumerate -> service.postFcitxJob {
+                        SpaceLongPressBehavior.Enumerate -> service.postInputJob(target) {
                             enumerateIme()
                         }
-                        SpaceLongPressBehavior.ToggleActivate -> service.postFcitxJob {
+                        SpaceLongPressBehavior.ToggleActivate -> service.postInputJob(target) {
                             toggleIme()
                         }
                         SpaceLongPressBehavior.ShowPicker -> showInputMethodPicker()
@@ -239,3 +241,4 @@ class CommonKeyActionListener :
         }
     }
 }
+

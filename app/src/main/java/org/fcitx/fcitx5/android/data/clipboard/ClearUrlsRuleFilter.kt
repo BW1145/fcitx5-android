@@ -18,6 +18,7 @@ class ClearUrlsRuleFilter(rawRules: String) {
 
     private val catalog = parseProviders(rawRules)
     private val urlPattern = Regex("^https?://", RegexOption.IGNORE_CASE)
+    private val uriSchemePattern = Regex("^[a-z][a-z0-9+.-]*:", RegexOption.IGNORE_CASE)
 
     fun transform(text: String): String {
         if (!urlPattern.matchesAt(text, 0)) return text
@@ -78,13 +79,16 @@ class ClearUrlsRuleFilter(rawRules: String) {
         Regex(this, RegexOption.IGNORE_CASE)
 
     private fun decodeUrl(str: String): String {
-        var a: String
-        var b = str
-        do {
-            a = b
-            b = Uri.decode(b)
-        } while (a != b)
-        return b
+        var target = str
+        // Rules can capture either a URL directly or an encoded redirect parameter.
+        // Once the scheme is visible, remaining escapes belong to the target URL.
+        while (!uriSchemePattern.containsMatchIn(target) && !target.startsWith("//")) {
+            val decoded = Uri.decode(target)
+            // Some rules capture a bare host/path, whose escapes must also survive.
+            if (decoded == target) return str
+            target = decoded
+        }
+        return target
     }
 
     private fun filterParams(params: String?, rules: List<Regex>): String? {
@@ -95,3 +99,4 @@ class ClearUrlsRuleFilter(rawRules: String) {
         }.joinToString("&").ifEmpty { null }
     }
 }
+

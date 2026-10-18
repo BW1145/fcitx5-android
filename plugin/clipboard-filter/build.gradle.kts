@@ -13,7 +13,7 @@ android {
     namespace = "org.fcitx.fcitx5.android.plugin.clipboard_filter"
 
     defaultConfig {
-        applicationId = "org.fcitx.fcitx5.android.plugin.clipboard_filter"
+        applicationId = "${project.mainApplicationId}.plugin.clipboard_filter"
     }
 
     buildFeatures {
@@ -48,3 +48,4 @@ dependencies {
     implementation(project(":lib:plugin-base"))
     implementation(libs.kotlinx.serialization.json)
 }
+

@@ -62,7 +62,7 @@ class HorizontalCandidateComponent :
                 super.onBindViewHolder(holder, position)
                 holder.itemView.minimumWidth = max(context.dp(40), minWidth)
                 holder.itemView.setOnClickListener {
-                    fcitx.launchOnReady { it.select(holder.idx) }
+                    service.selectCandidate(holder.idx)
                 }
                 holder.itemView.setOnLongClickListener {
                     inputView.showCandidateActionMenu(holder.idx, holder.candidate.text, holder.ui.root)
@@ -137,3 +137,4 @@ class HorizontalCandidateComponent :
         }
     }
 }
+
