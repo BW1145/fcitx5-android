@@ -5,44 +5,143 @@ mode="${1:-full}"
 main_id="${MAIN_APPLICATION_ID:-org.fcitx.fcitx5.android.bw1145}"
 package="$main_id.debug"
 test_package="$package.test"
+result=0
 
-if [[ "$mode" == "compat" ]]; then
-    apk_dir="${2:-test-apks}"
-    mkdir -p compatibility-results
-    adb install -r "$apk_dir/app-debug.apk"
-    adb install -r "$apk_dir/app-debug-androidTest.apk"
-    classes='org.fcitx.fcitx5.android.PersonalContentSearchTest#searchEditorCompatibility,org.fcitx.fcitx5.android.PersonalDataSafetyTest'
-    adb shell am instrument -w -r -e class "$classes" \
-        "$test_package/androidx.test.runner.AndroidJUnitRunner" | tee compatibility-results/instrumentation.txt
-    python3 - <<'PY'
+run_group() {
+    local group="$1"
+    local classes="$2"
+    local outputs="$output_root/$group"
+    mkdir -p "$outputs"
+    adb logcat -c || true
+    if ! timeout 600s adb shell am instrument -w -r -e class "$classes" \
+        "$test_package/androidx.test.runner.AndroidJUnitRunner" | tee "$outputs/instrumentation.txt"; then
+        result=1
+    fi
+    adb logcat -d -v threadtime > "$outputs/logcat.txt" || true
+    if ! python3 - "$outputs" "$group" "$classes" <<'PY'
 from pathlib import Path
 import re
+import sys
+import xml.etree.ElementTree as ET
 
-report = Path("compatibility-results/instrumentation.txt").read_text()
-if not re.search(r"OK \([1-9][0-9]* tests?\)", report):
-    raise SystemExit("API 23 instrumentation did not finish successfully")
-if re.search(r"INSTRUMENTATION_FAILED|FAILURES!!!|shortMsg=", report):
-    raise SystemExit("API 23 instrumentation reported a failure")
-completed = set()
+output = Path(sys.argv[1])
+group = sys.argv[2]
+prefix = "org.fcitx.fcitx5.android."
+methods = {
+    "PersonalRimeTest": {
+        "keyContentSizeScalesTextAndIconsAcrossOrientations",
+        "freshInstallProvidesOfflinePinyinAndKeepsUserConfig",
+        "clipboardLinkCleanupPreservesPayloadAndOriginalContent",
+        "bulkDeletionPreservesSuffixAfterRepeatedDeletion",
+        "preeditTapMapsToTextWithoutCountingCursorMarker",
+        "savedContentCanBeEditedOrderedAndRestoredFromBackup",
+        "holdingBackspaceThenSwipingUpClearsOnceAndStopsRepeat",
+    },
+    "PersonalDataSafetyTest": {
+        "clearUrlsDecodesOnlyTheOuterRedirectEncoding",
+        "clearUrlsPreservesDirectAndSchemalessRedirectTargets",
+        "clearUrlsPreservesParameterValuesWhenRemovingTracking",
+        "zipRejectsEscapingDirectoryWithoutSideEffects",
+        "zipRejectsSiblingPrefixFile",
+        "zipExtractsNestedEntriesWithoutExplicitParents",
+        "tokenizationPreservesTextOnSupportedAndroidVersions",
+    },
+    "PersonalPluginContractTest": {
+        "matchingNativeAndServicePluginsAreDiscovered",
+        "clipboardPluginBindsBackToItsMatchingIme",
+    },
+    "PersonalKeyboardUiTest": {
+        "screenTapEditsPinyinAndJapaneseCandidatesAppearWhileTyping",
+    },
+    "PersonalContentSearchTest": {
+        "searchEditorCompatibility",
+        "searchActionsStayInTheirEditorAcrossResetAndClose",
+    },
+}
+expected = set()
+for selection in sys.argv[3].split(","):
+    cls, separator, method = selection.partition("#")
+    known = methods[cls.removeprefix(prefix)]
+    if separator:
+        if method not in known:
+            raise SystemExit(f"Unknown required instrumentation test: {selection}")
+        expected.add((cls, method))
+    else:
+        expected.update((cls, method) for method in known)
+
+report = (output / "instrumentation.txt").read_text()
+cases = {}
 status = {}
+current_key = None
+errors = []
 for line in report.splitlines():
     if line.startswith("INSTRUMENTATION_STATUS: "):
         key, _, value = line.removeprefix("INSTRUMENTATION_STATUS: ").partition("=")
         status[key] = value
+        current_key = key
     elif line.startswith("INSTRUMENTATION_STATUS_CODE: "):
-        if line.endswith(": 0"):
-            completed.add((status.get("class"), status.get("test")))
+        code = int(line.rsplit(": ", 1)[1])
+        if code != 1:
+            key = (status.get("class"), status.get("test"))
+            if all(key):
+                if key in cases:
+                    errors.append(f"Duplicate completion for {key}")
+                cases[key] = (code, status.get("stack") or status.get("stream", ""))
+            elif code != 0:
+                errors.append(f"Runner status {code}: {status}")
         status = {}
-search = ("org.fcitx.fcitx5.android.PersonalContentSearchTest", "searchEditorCompatibility")
-if search not in completed:
-    raise SystemExit("The Android 6 search editing test did not complete")
-data_tests = {method for cls, method in completed
-              if cls == "org.fcitx.fcitx5.android.PersonalDataSafetyTest"}
-if len(data_tests) < 7:
-    raise SystemExit(f"Expected all seven Android 6 data safety tests, found {data_tests}")
-print(f"API 23 compatibility passed: {len(completed)} tests")
+        current_key = None
+    elif current_key and not line.startswith("INSTRUMENTATION_"):
+        status[current_key] += "\n" + line
+
+completed = {key for key, (code, _) in cases.items() if code == 0}
+summary = re.search(r"OK \(([1-9][0-9]*) tests?\)", report)
+if not summary or int(summary.group(1)) != len(expected):
+    errors.append(f"Runner did not report exactly {len(expected)} successful tests")
+if re.search(r"INSTRUMENTATION_FAILED|FAILURES!!!|shortMsg=", report):
+    errors.append("Instrumentation reported a failure")
+if completed != expected:
+    errors.append(f"Missing successful tests: {sorted(expected - completed)}")
+if set(cases) - expected:
+    errors.append(f"Unexpected test completions: {sorted(set(cases) - expected)}")
+
+suite = ET.Element("testsuite", name=group)
+for cls, method in sorted(expected | set(cases)):
+    case = ET.SubElement(suite, "testcase", classname=cls, name=method)
+    outcome = cases.get((cls, method))
+    if outcome is None:
+        ET.SubElement(case, "failure", message="Required test did not complete")
+    elif outcome[0] != 0:
+        code, detail = outcome
+        tag = "skipped" if code in (-3, -4) else "failure"
+        ET.SubElement(case, tag, message=f"Instrumentation status {code}").text = detail
+if errors:
+    case = ET.SubElement(suite, "testcase", classname="ci", name="instrumentationContract")
+    ET.SubElement(case, "failure", message="Instrumentation execution contract failed").text = "\n".join(errors)
+suite.set("tests", str(len(suite.findall("testcase"))))
+suite.set("failures", str(len(suite.findall("testcase/failure"))))
+suite.set("errors", "0")
+suite.set("skipped", str(len(suite.findall("testcase/skipped"))))
+ET.indent(suite)
+ET.ElementTree(suite).write(output / f"TEST-{group}.xml", encoding="utf-8", xml_declaration=True)
+if errors:
+    raise SystemExit("\n".join(errors))
+counts = {cls: sum(item[0] == cls for item in completed) for cls, _ in sorted(expected)}
+print(f"Verified every required test completed successfully: {counts}")
 PY
-    exit 0
+    then
+        result=1
+    fi
+}
+
+if [[ "$mode" == "compat" ]]; then
+    apk_dir="${2:-test-apks}"
+    output_root=compatibility-results
+    mkdir -p "$output_root"
+    adb install -r "$apk_dir/app-debug.apk"
+    adb install -r -t "$apk_dir/app-debug-androidTest.apk"
+    run_group api23-compat 'org.fcitx.fcitx5.android.PersonalContentSearchTest#searchEditorCompatibility,org.fcitx.fcitx5.android.PersonalDataSafetyTest'
+    exit "$result"
 fi
 
 if [[ "$mode" != "full" ]]; then
@@ -50,58 +149,33 @@ if [[ "$mode" != "full" ]]; then
     exit 2
 fi
 
-adb install -r "$(find app/build/outputs/apk/debug -name '*.apk' -print -quit)"
+output_root=app/build/outputs/androidTest-results
+mkdir -p "$output_root"
+app_apk=$(find app/build/outputs/apk/debug -name '*.apk' -print -quit)
+test_apk=$(find app/build/outputs/apk/androidTest/debug -name '*.apk' -print -quit)
+python3 - "$app_apk" "$test_apk" <<'PY'
+import sys
+
+sys.path.insert(0, "scripts")
+from verify_personal_apk import require, verify_signature
+
+app_signers, _ = verify_signature(sys.argv[1])
+test_signers, _ = verify_signature(sys.argv[2])
+require(app_signers == test_signers, "Instrumentation APK signer differs from the verified IME")
+print("Verified instrumentation APK and IME use the same signing identity")
+PY
+
+# Install the already verified APKs once. Test execution must not rebuild or re-sign them.
+adb install -r "$app_apk"
+adb install -r -t "$test_apk"
 for plugin in chewing clipboard-filter; do
     apk=$(find "plugin/$plugin/build/outputs/apk/debug" -name '*.apk' -print -quit)
     adb install -r "$apk"
 done
 
-result=0
-run_group() {
-    local group="$1"
-    local classes="$2"
-    if ! ./gradlew -PbuildABI=x86_64 "-Pandroid.testInstrumentationRunnerArguments.class=$classes" :app:connectedDebugAndroidTest; then
-        result=1
-    fi
-    local reports="app/build/reports/androidTests"
-    local outputs="app/build/outputs/androidTest-results"
-    mkdir -p "$reports/$group" "$outputs/$group"
-    if [[ -d "$reports/connected" && -d "$outputs/connected" ]]; then
-        cp -a "$reports/connected/." "$reports/$group/"
-        cp -a "$outputs/connected/." "$outputs/$group/"
-    else
-        echo "Missing instrumentation reports for $group" >&2
-        result=1
-    fi
-    if ! python3 - "$outputs/$group" "$classes" <<'PY'
-from pathlib import Path
-import sys
-import xml.etree.ElementTree as ET
-
-completed = set()
-for path in Path(sys.argv[1]).rglob("*.xml"):
-    root = ET.parse(path).getroot()
-    for case in root.iter("testcase"):
-        if not any(case.find(tag) is not None for tag in ("failure", "error", "skipped")):
-            completed.add((case.get("classname"), case.get("name")))
-for expected in sys.argv[2].split(","):
-    if not any(cls == expected for cls, _ in completed):
-        raise SystemExit(f"No completed instrumentation tests for {expected}")
-print(f"Verified executed test classes: {sys.argv[2]} ({len(completed)} tests)")
-PY
-    then
-        result=1
-    fi
-}
-
 run_group personal-native 'org.fcitx.fcitx5.android.PersonalRimeTest,org.fcitx.fcitx5.android.PersonalDataSafetyTest,org.fcitx.fcitx5.android.PersonalPluginContractTest'
 run_group personal-keyboard 'org.fcitx.fcitx5.android.PersonalKeyboardUiTest'
 run_group personal-search 'org.fcitx.fcitx5.android.PersonalContentSearchTest'
-
-if ! grep -r -q 'testcase name="screenTapEditsPinyinAndJapaneseCandidatesAppearWhileTyping"' app/build/outputs/androidTest-results/personal-keyboard; then
-    echo 'The keyboard screen interaction test did not run'
-    result=1
-fi
 
 mkdir -p app/build/reports/androidTests/connected/screens
 for image in pinyin-edit japanese-predictions keyboard-final; do

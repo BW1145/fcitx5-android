@@ -47,53 +47,74 @@ class PersonalContentSearchTest {
     /** Also run on API 23. This exercises the production editor without starting an engine. */
     @Test
     fun searchEditorCompatibility() {
-        instrumentation.runOnMainSync {
-            val editor = ContentSearchEditor(context)
-            val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
-            val previousClip = clipboard.primaryClip
-            try {
-                val backspace = FcitxEvent.KeyEvent(FcitxEvent.KeyEvent.Data(
-                    KeySym(FcitxKeyMapping.FcitxKey_BackSpace), KeyStates.Virtual, 0, false, -1))
-                editor.commit("a😀b")
-                editor.view.setSelection(3)
-                assertTrue(editor.handle(backspace))
-                assertEquals("Backspace deletes the whole supplementary character", "ab", editor.view.text.toString())
-                assertEquals(1, editor.view.selectionStart)
-
-                editor.clear()
-                editor.commit("a😀b🦊c")
-                editor.view.setSelection(3)
-                editor.handle(FcitxEvent.DeleteSurroundingEvent(FcitxEvent.DeleteSurroundingEvent.Data(1, 2)))
-                assertEquals("Native lengths count code points on API 23 too", "ac", editor.view.text.toString())
-                editor.view.setSelection(0)
-                editor.key(KeyEvent.KEYCODE_FORWARD_DEL)
-                assertEquals("c", editor.view.text.toString())
-
-                editor.clear()
-                editor.commit("local 😀")
-                editor.key(KeyEvent.KEYCODE_A, metaState = KeyEvent.META_CTRL_ON)
-                editor.handle(FcitxEvent.ClientPreeditEvent(FormattedText.Empty))
-                assertEquals("An empty engine reset preserves a local selection", 0, editor.selection.start)
-                assertEquals(editor.view.length(), editor.selection.end)
-                editor.key(KeyEvent.KEYCODE_C, metaState = KeyEvent.META_CTRL_ON)
-                assertEquals("local 😀", clipboard.primaryClip!!.getItemAt(0).coerceToText(context).toString())
-                editor.deleteSelection()
-                assertEquals("", editor.view.text.toString())
-                editor.key(KeyEvent.KEYCODE_V, metaState = KeyEvent.META_CTRL_ON)
-                assertEquals("local 😀", editor.view.text.toString())
-
-                editor.clear()
-                editor.handle(FcitxEvent.ClientPreeditEvent(FormattedText(arrayOf("nihao"), intArrayOf(0), 2)))
-                assertEquals("The local composing cursor follows the engine", 2, editor.view.selectionStart)
-                editor.key(KeyEvent.KEYCODE_ENTER)
-                assertEquals("nihao", editor.view.text.toString())
-                assertEquals(-1, BaseInputConnection.getComposingSpanStart(editor.view.text))
-                editor.clear()
-                editor.handle(backspace)
-                assertEquals("Deleting an empty query stays local", "", editor.view.text.toString())
-            } finally {
-                clipboard.setPrimaryClip(previousClip ?: ClipData.newPlainText("", ""))
+        val intent = android.content.Intent(context, PersonalInputTestActivity::class.java)
+            .putExtra(PersonalInputTestActivity.EXTRA_SHOW_SOFT_INPUT, false)
+        activityRule.launchActivity(intent)
+        try {
+            lateinit var editor: ContentSearchEditor
+            instrumentation.runOnMainSync {
+                editor = ContentSearchEditor(activityRule.activity)
+                activityRule.activity.setContentView(editor.view)
+                editor.view.isFocusableInTouchMode = true
+                editor.view.requestFocus()
             }
+            await("The attached local editor has input focus") {
+                var focused = false
+                instrumentation.runOnMainSync {
+                    focused = editor.view.isAttachedToWindow && editor.view.hasWindowFocus() && editor.view.isFocused
+                }
+                focused
+            }
+            instrumentation.runOnMainSync {
+                val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+                val previousClip = clipboard.primaryClip
+                try {
+                    val backspace = FcitxEvent.KeyEvent(FcitxEvent.KeyEvent.Data(
+                        KeySym(FcitxKeyMapping.FcitxKey_BackSpace), KeyStates.Virtual, 0, false, -1))
+                    editor.commit("a😀b")
+                    editor.view.setSelection(3)
+                    assertTrue(editor.handle(backspace))
+                    assertEquals("Backspace deletes the whole supplementary character", "ab", editor.view.text.toString())
+                    assertEquals(1, editor.view.selectionStart)
+
+                    editor.clear()
+                    editor.commit("a😀b🦊c")
+                    editor.view.setSelection(3)
+                    editor.handle(FcitxEvent.DeleteSurroundingEvent(FcitxEvent.DeleteSurroundingEvent.Data(1, 2)))
+                    assertEquals("Native lengths count code points on API 23 too", "ac", editor.view.text.toString())
+                    editor.view.setSelection(0)
+                    editor.key(KeyEvent.KEYCODE_FORWARD_DEL)
+                    assertEquals("c", editor.view.text.toString())
+
+                    editor.clear()
+                    editor.commit("local 😀")
+                    editor.key(KeyEvent.KEYCODE_A, metaState = KeyEvent.META_CTRL_ON)
+                    editor.handle(FcitxEvent.ClientPreeditEvent(FormattedText.Empty))
+                    assertEquals("An empty engine reset preserves a local selection", 0, editor.selection.start)
+                    assertEquals(editor.view.length(), editor.selection.end)
+                    editor.key(KeyEvent.KEYCODE_C, metaState = KeyEvent.META_CTRL_ON)
+                    assertEquals("local 😀", clipboard.primaryClip!!.getItemAt(0).coerceToText(context).toString())
+                    editor.key(KeyEvent.KEYCODE_A, metaState = KeyEvent.META_CTRL_ON)
+                    editor.deleteSelection()
+                    assertEquals("", editor.view.text.toString())
+                    editor.key(KeyEvent.KEYCODE_V, metaState = KeyEvent.META_CTRL_ON)
+                    assertEquals("local 😀", editor.view.text.toString())
+
+                    editor.clear()
+                    editor.handle(FcitxEvent.ClientPreeditEvent(FormattedText(arrayOf("nihao"), intArrayOf(0), 2)))
+                    assertEquals("The local composing cursor follows the engine", 2, editor.view.selectionStart)
+                    editor.key(KeyEvent.KEYCODE_ENTER)
+                    assertEquals("nihao", editor.view.text.toString())
+                    assertEquals(-1, BaseInputConnection.getComposingSpanStart(editor.view.text))
+                    editor.clear()
+                    editor.handle(backspace)
+                    assertEquals("Deleting an empty query stays local", "", editor.view.text.toString())
+                } finally {
+                    clipboard.setPrimaryClip(previousClip ?: ClipData.newPlainText("", ""))
+                }
+            }
+        } finally {
+            activityRule.finishActivity()
         }
     }
 
