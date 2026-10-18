@@ -14,10 +14,8 @@
     <uses-permission android:name="android.permission.VIBRATE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
-    <!-- remove intent queries merged from library manifest (namely Android-Image-Cropper) -->
-    <queries tools:node="removeAll" />
-
-    <queries>
+    <!-- Keep our discovery queries while replacing unused library queries. -->
+    <queries tools:node="replace">
         <intent>
             <action android:name="${applicationId}.plugin.MANIFEST" />
         </intent>
@@ -193,3 +191,4 @@
     </application>
 
 </manifest>
+

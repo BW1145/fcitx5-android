@@ -6,6 +6,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import xml.etree.ElementTree as ET
 import zipfile
 from pathlib import Path
@@ -41,6 +42,17 @@ def read_manifest(apk):
 
 def names(manifest, path):
     return {node.get(ANDROID + "name") for node in manifest.findall(path)}
+
+
+def verify_manifest(apk, verifier, *args):
+    manifest = read_manifest(apk)
+    try:
+        return verifier(manifest, *args)
+    except ValueError:
+        print(f"Final merged manifest from {apk}:", file=sys.stderr)
+        ET.indent(manifest)
+        print(ET.tostring(manifest, encoding="unicode"), file=sys.stderr)
+        raise
 
 
 def verify_version(manifest, version_code, version_name):
@@ -180,8 +192,8 @@ def main():
     parser.add_argument("--signature-report", type=Path)
     args = parser.parse_args()
     verify_assets(args.apk, args.abi)
-    manifest = read_manifest(args.apk)
-    code, name = verify_app_manifest(manifest, args.application_id, args.version_code, args.version_name)
+    code, name = verify_manifest(args.apk, verify_app_manifest,
+                                args.application_id, args.version_code, args.version_name)
     signers, report = verify_signature(args.apk)
     if args.previous_signature:
         require(signers == certificate_digests(args.previous_signature.read_text()),
@@ -189,7 +201,8 @@ def main():
     if args.signature_report:
         args.signature_report.write_text(report)
     for plugin in args.plugin_apk:
-        package = verify_plugin_manifest(read_manifest(plugin), args.application_id, args.version_code, args.version_name)
+        package = verify_manifest(plugin, verify_plugin_manifest,
+                                  args.application_id, args.version_code, args.version_name)
         plugin_signers, _ = verify_signature(plugin)
         require(plugin_signers == signers, f"Plugin signer differs from the IME: {package}")
         print(f"Verified plugin package, discovery, permissions and signer: {package}")
