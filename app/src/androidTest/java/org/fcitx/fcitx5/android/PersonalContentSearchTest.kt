@@ -249,6 +249,22 @@ class PersonalContentSearchTest {
             type("abc")
             await("Characters are routed into search after the empty swipe") { query() == "abc" }
             assertEquals("An empty-query Backspace swipe must not delete original text", original, hostText())
+            await("English spelling preedit is pending before the reset swipe") {
+                fcitx.runImmediately { clientPreeditCached.toString() == "abc" }
+            }
+            swipeBackspaceLeft()
+            await("A swipe resets the pending search composition") {
+                query() == "" && fcitx.runImmediately { clientPreeditCached.isEmpty() && inputPanelCached.preedit.isEmpty() }
+            }
+            assertEquals("Resetting search preedit must preserve original text", original, hostText())
+
+            // keyboard-us also composes spelling hints. Commit them before testing
+            // selection deletion in the local editor, then test Return on empty preedit.
+            type("abc")
+            key(R.id.button_return)
+            await("English text is committed locally before selection deletion") {
+                query() == "abc" && fcitx.runImmediately { clientPreeditCached.isEmpty() && inputPanelCached.preedit.isEmpty() }
+            }
             swipeBackspaceLeft()
             await("Backspace swipe deletes the local selection") { query() == "ab" }
             key(R.id.button_return)
@@ -305,6 +321,12 @@ class PersonalContentSearchTest {
 
             fcitx.runOnReady { reset(); activateIme("keyboard-us") }
             openSearch()
+            type("b")
+            await("The new search session accepts input before the queued-key test") { query() == "b" }
+            keyText("q")
+            await("The new search session is ready with no pending composition") {
+                query() == "" && fcitx.runImmediately { clientPreeditCached.isEmpty() && inputPanelCached.preedit.isEmpty() }
+            }
             // Hold the real native queue so keys remain pending when Cancel changes the target.
             val nativeEntered = CountDownLatch(1)
             val gate = async(Dispatchers.Default) {
