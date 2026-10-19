@@ -64,7 +64,16 @@ abstract class CMakeBuildInstallTask : DefaultTask() {
     abstract val destDir: Property<File>
 
     private fun exec(action: Action<ExecSpec>) {
-        project.providers.exec(action).result.get()
+        val output = project.providers.exec(Action { spec ->
+            action.execute(spec)
+            spec.isIgnoreExitValue = true
+        })
+        val result = output.result.get()
+        if (result.exitValue != 0) {
+            output.standardOutput.asText.get().takeIf { it.isNotBlank() }?.let { logger.error(it) }
+            output.standardError.asText.get().takeIf { it.isNotBlank() }?.let { logger.error(it) }
+        }
+        result.assertNormalExitValue()
     }
 
     @TaskAction

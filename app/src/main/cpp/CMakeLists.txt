@@ -2,6 +2,12 @@ cmake_minimum_required(VERSION 3.18)
 
 project(fcitx5-android VERSION ${VERSION_NAME})
 
+# Report missing generated data during CMake configuration.
+set(PERSONAL_SCHEMA "${CMAKE_CURRENT_SOURCE_DIR}/../assets/personal-defaults/data/rime/rime_ice.schema.yaml")
+if(NOT EXISTS "${PERSONAL_SCHEMA}")
+    message(FATAL_ERROR "Custom Rime data is not prepared. Run python3 scripts/prepare_personal_rime.py, then bash scripts/build_personal_rime.sh <abi> before Gradle.")
+endif()
+
 # For reproducible build
 add_link_options("LINKER:--hash-style=gnu,--build-id=none")
 

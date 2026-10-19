@@ -32,3 +32,7 @@ GitHub Actions 的 Personal Custom APK 工作流依次准备固定源码与离�
 
 剪贴板清理实现参考 [fx-continued](https://github.com/dhangonge/fcitx5-android-fx-continued)，规则来自 [ClearURLs/Rules](https://github.com/ClearURLs/Rules)。各原生库和模型的许可证列于应用的开源许可页面。
 
+
+### Nix 与常规 PR 构建
+
+这两项检查使用与个人发行包一致的 arm64 轻量版目标。Gradle 构建前必须先运行 `python3 scripts/prepare_personal_rime.py`，再运行 `bash scripts/build_personal_rime.sh arm64-v8a`；Nix 检查的全部准备与构建命令均在 `nix develop .#noAS` 环境中执行。缺少生成方案时 CMake 会立即给出准备命令，资源安装失败时会输出 CMake 原始错误。

@@ -5,6 +5,10 @@ on:
   push:
     branches: [master]
 
+# Match the custom APK's supported device architecture.
+env:
+  BUILD_ABI: arm64-v8a
+
 jobs:
   develop:
     runs-on: ubuntu-24.04
@@ -21,7 +25,19 @@ jobs:
         with:
           name: fcitx5-android
           authToken: "${{ secrets.CACHIX_AUTH_TOKEN }}"
-      - name: Build Release APK
+      - name: Prepare pinned custom Rime sources and offline data
+        run: nix develop .#noAS --command python3 scripts/prepare_personal_rime.py
+      - name: Build the custom Rime library in the Nix environment
+        run: nix develop .#noAS --command bash scripts/build_personal_rime.sh "$BUILD_ABI"
+      - name: Build Release APK and plugins
+        run: nix develop .#noAS --command ./gradlew -PpersonalPackaging=lite :app:assembleRelease :assembleReleasePlugins --stacktrace
+      - name: Verify bundled offline data in the Nix APK
         run: |
-          nix develop .#noAS --command ./gradlew :app:assembleRelease
-          nix develop .#noAS --command ./gradlew :assembleReleasePlugins
+          nix develop .#noAS --command python3 - <<'PYTHON'
+          from pathlib import Path
+          from scripts.verify_personal_apk import verify_assets
+          apks = list(Path('app/build/outputs/apk/release').glob('*.apk'))
+          assert len(apks) == 1, apks
+          verify_assets(apks[0], 'arm64-v8a')
+          print('Nix-built lite APK contains Rime, all offline models and Japanese data')
+          PYTHON
