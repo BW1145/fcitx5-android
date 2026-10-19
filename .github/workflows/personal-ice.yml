@@ -2,7 +2,7 @@ name: Personal Custom APK
 
 on:
   push:
-    branches: [personal-ice, lite-apk]
+    branches: [personal-ice]
   workflow_dispatch:
 
 permissions:
