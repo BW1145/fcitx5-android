@@ -1,0 +1,87 @@
+name: Publish Verified Lite 1.1.32
+
+on:
+  push:
+    branches: [lite-upgrade-check]
+    paths: [.github/workflows/publish-lite-1.1.32.yml]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  actions: read
+
+concurrency:
+  group: publish-lite-1.1.32
+  cancel-in-progress: false
+
+jobs:
+  publish:
+    if: github.repository == 'BW1145/fcitx5-android'
+    runs-on: ubuntu-24.04
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - name: Confirm the existing build and completed runtime checks
+        run: |
+          python3 - <<'PY'
+          import json, os, subprocess
+          def api(path):
+              return json.loads(subprocess.check_output(['gh', 'api', 'repos/' + os.environ['GITHUB_REPOSITORY'] + path]))
+          build = api('/actions/runs/39198695806')
+          assert build['head_sha'] == '539b913264afd7361192b18b303c2cbf7d78c544'
+          jobs = {j['name']: j['conclusion'] for j in api('/actions/runs/39198695806/jobs?per_page=100')['jobs']}
+          for name in ['build', 'smoke (full)', 'smoke (lite)', 'compat (full)', 'compat (lite)']:
+              assert jobs.get(name) == 'success', (name, jobs.get(name))
+          upgrade = api('/actions/runs/39200490499')
+          assert upgrade['head_sha'] == 'cac38ab08a30c58035dc3e9370cfce473473afa8'
+          assert upgrade['conclusion'] == 'success'
+          print('Verified build, both input/compatibility checks and full-lite-full upgrade checks')
+          PY
+      - uses: actions/download-artifact@v8
+        with:
+          name: arm64-apk
+          path: verified-build
+          run-id: 39198695806
+          github-token: ${{ github.token }}
+      - name: Stage the exact verified APK and checksums
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, pathlib, shutil
+          root = pathlib.Path('verified-build')
+          apk = root / 'fcitx5-custom-lite-arm64.apk'
+          digest = hashlib.sha256(apk.read_bytes()).hexdigest()
+          assert digest == 'cc69ec5f407302b75150b63481c6b60ac98c78e01e0d9f2124aa7c06ee7a98fe'
+          assert apk.stat().st_size == 78341248
+          metadata = json.loads((root / 'build-metadata.json').read_text())
+          assert metadata['versionName'] == '1.1.32'
+          assert metadata['commitHash'] == '539b913264afd7361192b18b303c2cbf7d78c544'
+          target = pathlib.Path('dist'); target.mkdir()
+          shutil.copy2(apk, target / 'fcitx5-custom-lite-1.1.32-arm64.apk')
+          for name in ['fcitx5-custom-chewing-arm64.apk', 'fcitx5-custom-clipboard-filter.apk',
+                       'apk-size-comparison.json', 'build-metadata.json', 'personal-rime-dependencies.json']:
+              shutil.copy2(root / name, target / name)
+          shutil.copy2(root / 'signature-lite.txt', target / 'signature.txt')
+          with (target / 'SHA256SUMS').open('w') as out:
+              for item in sorted(target.glob('*.apk')):
+                  out.write(hashlib.sha256(item.read_bytes()).hexdigest() + '  ' + item.name + '\n')
+          PY
+      - name: Publish the standalone lite release without merging branches
+        run: |
+          cat > notes.md <<'EOF'
+          轻量版 1.1.32，适用于 arm64 安卓设备，可直接覆盖安装已有定制版。
+
+          下载主程序：**fcitx5-custom-lite-1.1.32-arm64.apk**（78.34 MB）。
+
+          - 保留 Rime、雾凇全部词库、Octagram 离线模型、Predict 联想、Anthy 日语，以及剪贴板、宏、备份和插件功能。
+          - 仅移除另一套 Fcitx 拼音／双拼数据，以及内置二笔、五笔、自然码码表和对应入口配置。
+          - 同版完整版为 122,333,632 字节，轻量版为 78,341,248 字节，减少 43,992,384 字节（约 36%）。
+          - 包名和签名沿用既有定制版，用户词库、设置及模型数据保留。
+          - 两版 Android 15 输入回归、Android 6 兼容检查，以及完整版→轻量版→完整版覆盖切换验证均通过。
+
+          可选插件：Chewing 注音与剪贴板过滤器为独立 APK，按需安装。
+
+          本次直接发布已经构建并校验的 1.1.32 安装包，保留独立分支，没有合并至 personal-ice。现有完整版发布继续保留。
+          EOF
+          gh release create custom-lite-1.1.32 dist/* --repo "$GITHUB_REPOSITORY" \
+            --target 539b913264afd7361192b18b303c2cbf7d78c544 \
+            --title '小企鹅输入法轻量版 1.1.32' --notes-file notes.md --latest=false
