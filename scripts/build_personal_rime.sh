@@ -3,13 +3,20 @@ set -euo pipefail
 abi="$1"
 root="$(pwd)"
 prebuilt="$root/lib/fcitx5/src/main/cpp/prebuilt"
-cmake="$ANDROID_HOME/cmake/3.31.6/bin/cmake"
+cmake_bin="$ANDROID_HOME/cmake/3.31.6/bin"
+cmake="$cmake_bin/cmake"
+ninja="$cmake_bin/ninja"
+if [[ -f "$ninja.exe" ]]; then
+  ninja="$ninja.exe"
+fi
 ndk="$ANDROID_HOME/ndk/28.0.13004108"
 paths=""
 for dep in boost glog yaml-cpp leveldb marisa opencc lua; do
   paths+="$prebuilt/$dep/$abi;"
 done
-"$cmake" -S build/personal-rime/librime -B "build/personal-rime/$abi" \
+# Use the SDK's Ninja on every host; Windows otherwise defaults to unavailable NMake.
+"$cmake" -G Ninja -DCMAKE_MAKE_PROGRAM="$ninja" \
+  -S build/personal-rime/librime -B "build/personal-rime/$abi" \
   -DCMAKE_TOOLCHAIN_FILE="$ndk/build/cmake/android.toolchain.cmake" \
   -DANDROID_ABI="$abi" -DANDROID_PLATFORM=android-23 \
   -DCMAKE_BUILD_TYPE=Release -DCMAKE_POSITION_INDEPENDENT_CODE=ON \
