@@ -22,12 +22,14 @@ jobs:
     outputs:
       name: ${{ steps.version.outputs.name }}
       code: ${{ steps.version.outputs.code }}
+      timestamp: ${{ steps.version.outputs.timestamp }}
     steps:
       - id: version
         name: Choose one version for all delivered APKs
         run: |
           echo "name=1.1.$GITHUB_RUN_NUMBER" >> "$GITHUB_OUTPUT"
           echo "code=$((1000 + GITHUB_RUN_NUMBER))" >> "$GITHUB_OUTPUT"
+          echo "timestamp=$(date +%s000)" >> "$GITHUB_OUTPUT"
 
   build:
     needs: version
@@ -35,6 +37,7 @@ jobs:
     env:
       BUILD_VERSION_NAME: ${{ needs.version.outputs.name }}
       BUILD_VERSION_CODE: ${{ needs.version.outputs.code }}
+      BUILD_TIMESTAMP: ${{ needs.version.outputs.timestamp }}
     steps:
       - uses: actions/checkout@v7
         with:
@@ -119,6 +122,7 @@ jobs:
     env:
       BUILD_VERSION_NAME: ${{ needs.version.outputs.name }}
       BUILD_VERSION_CODE: ${{ needs.version.outputs.code }}
+      BUILD_TIMESTAMP: ${{ needs.version.outputs.timestamp }}
     steps:
       - uses: actions/checkout@v7
         with:
