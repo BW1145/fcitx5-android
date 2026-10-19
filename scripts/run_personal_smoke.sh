@@ -6,12 +6,18 @@ main_id="${MAIN_APPLICATION_ID:-org.fcitx.fcitx5.android.bw1145}"
 package="$main_id.debug"
 test_package="$package.test"
 result=0
+# am instrument force-stops the target process between groups. Leave its IME
+# unselected first so Android does not keep a stale binding to that process.
+baseline_ime=$(adb shell settings get secure default_input_method | tr -d '\r')
 
 run_group() {
     local group="$1"
     local classes="$2"
     local outputs="$output_root/$group"
     mkdir -p "$outputs"
+    if [[ -n "$baseline_ime" && "$baseline_ime" != "null" && "$baseline_ime" != "$package/"* ]]; then
+        adb shell ime set "$baseline_ime"
+    fi
     adb logcat -c || true
     if ! timeout 600s adb shell am instrument -w -r -e class "$classes" \
         "$test_package/androidx.test.runner.AndroidJUnitRunner" | tee "$outputs/instrumentation.txt"; then

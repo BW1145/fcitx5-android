@@ -236,6 +236,22 @@ class PersonalContentSearchTest {
             shell("ime enable $ime")
             shell("ime set $ime")
             activityRule.launchActivity(null)
+            // A show request in Activity.onCreate can precede the served-view
+            // connection. Request it after the host window actually gains focus.
+            await("The host editor has window focus") {
+                var focused = false
+                instrumentation.runOnMainSync {
+                    focused = activityRule.activity.editor.hasWindowFocus()
+                }
+                focused
+            }
+            instrumentation.runOnMainSync {
+                val editor = activityRule.activity.editor
+                editor.requestFocus()
+                val manager = context.getSystemService(Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
+                manager.restartInput(editor)
+                manager.showSoftInput(editor, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
+            }
             await("Keyboard is visible") { imeNodes().any { it.viewIdResourceName?.endsWith(":id/button_space") == true } }
             fcitx.runOnReady { reset(); activateIme("keyboard-us") }
             await("English engine is active") { fcitx.runImmediately { inputMethodEntryCached.uniqueName == "keyboard-us" } }
