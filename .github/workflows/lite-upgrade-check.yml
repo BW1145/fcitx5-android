@@ -1,0 +1,53 @@
+name: Verify Existing Lite APK Upgrade
+
+on:
+  push:
+    branches: [lite-upgrade-check]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  upgrade:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v4
+      - uses: actions/download-artifact@v8
+        with:
+          name: compatibility-test-apks-full
+          path: test-apks/full
+          run-id: 39198695806
+          github-token: ${{ github.token }}
+      - uses: actions/download-artifact@v8
+        with:
+          name: compatibility-test-apks-lite
+          path: test-apks/lite
+          run-id: 39198695806
+          github-token: ${{ github.token }}
+      - name: Give the emulator fixtures one test signing identity
+        run: bash scripts/sign_upgrade_test_apks.sh test-apks/full test-apks/lite
+      - name: Enable emulator acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Verify full to lite upgrade and full restoration preserve user data
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          script: bash scripts/run_personal_smoke.sh upgrade test-apks/full test-apks/lite
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: full-lite-upgrade-results
+          path: upgrade-results/

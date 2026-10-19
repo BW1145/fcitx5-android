@@ -245,6 +245,8 @@ jobs:
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
           sudo udevadm control --reload-rules
           sudo udevadm trigger --name-match=kvm
+      - name: Use one signing identity for the independently built debug fixtures
+        run: bash scripts/sign_upgrade_test_apks.sh test-apks/full test-apks/lite
       - name: Verify full to lite upgrade and full restoration preserve user data
         uses: reactivecircus/android-emulator-runner@v2
         with:
