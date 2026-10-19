@@ -2,14 +2,20 @@
 set -euo pipefail
 abi="$1"
 root="$(pwd)"
+personal_sdk="$ANDROID_HOME"
+# Native Windows CMake cannot use Git Bash drive mounts in semicolon path lists.
+if command -v cygpath >/dev/null 2>&1; then
+  root="$(cygpath -m "$root")"
+  personal_sdk="$(cygpath -m "$personal_sdk")"
+fi
 prebuilt="$root/lib/fcitx5/src/main/cpp/prebuilt"
-cmake_bin="$ANDROID_HOME/cmake/3.31.6/bin"
+cmake_bin="$personal_sdk/cmake/3.31.6/bin"
 cmake="$cmake_bin/cmake"
 ninja="$cmake_bin/ninja"
 if [[ -f "$ninja.exe" ]]; then
   ninja="$ninja.exe"
 fi
-ndk="$ANDROID_HOME/ndk/28.0.13004108"
+ndk="$personal_sdk/ndk/28.0.13004108"
 paths=""
 for dep in boost glog yaml-cpp leveldb marisa opencc lua; do
   paths+="$prebuilt/$dep/$abi;"
