@@ -9,6 +9,12 @@ plugins {
     alias(libs.plugins.ksp)
 }
 
+// Packaging changes only bundled data; identity, engines and user settings stay shared.
+val personalPackaging = providers.gradleProperty("personalPackaging").orElse("full").get()
+require(personalPackaging in setOf("full", "lite")) {
+    "personalPackaging must be full or lite"
+}
+
 android {
     namespace = "org.fcitx.fcitx5.android"
 
@@ -70,6 +76,10 @@ fcitxComponent {
     // exclude (delete immediately after install) tables that nobody would use
     excludeFiles = listOf("cangjie", "erbi", "qxm", "wanfeng").map {
         "usr/share/fcitx5/inputmethod/$it.conf"
+    }
+    if (personalPackaging == "lite") {
+        excludeFiles += rootProject.file("scripts/personal-lite-excludes.txt")
+            .readLines().filter { it.isNotBlank() && !it.startsWith("#") }
     }
     installPrebuiltAssets = true
 }

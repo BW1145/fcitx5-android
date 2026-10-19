@@ -2,7 +2,7 @@ name: Personal Custom APK
 
 on:
   push:
-    branches: [personal-ice]
+    branches: [personal-ice, lite-apk]
   workflow_dispatch:
 
 permissions:
@@ -84,6 +84,25 @@ jobs:
           cp scripts/personal-rime-dependencies.json dist/
           cd dist
           sha256sum *.apk > SHA256SUMS
+      - name: Build the matching signed lite APK
+        env:
+          SIGN_KEY_BASE64: ${{ secrets.PERSONAL_SIGNING_KEY }}
+          SIGN_KEY_PWD: ${{ secrets.PERSONAL_SIGNING_PASSWORD }}
+          SIGN_KEY_ALIAS: personal
+        run: ./gradlew -PbuildABI=arm64-v8a -PpersonalPackaging=lite :app:assembleRelease
+      - name: Verify lite identity, retained data and measured size reduction
+        run: |
+          apk=$(find app/build/outputs/apk/release -name '*.apk' -print -quit)
+          python3 scripts/verify_personal_apk.py "$apk" arm64-v8a \
+            --application-id "$MAIN_APPLICATION_ID" \
+            --version-code "$BUILD_VERSION_CODE" --version-name "$BUILD_VERSION_NAME" \
+            --previous-signature dist/signature.txt \
+            --signature-report dist/signature-lite.txt
+          cp "$apk" dist/fcitx5-custom-lite-arm64.apk
+          python3 scripts/verify_personal_lite.py dist/fcitx5-custom-arm64.apk \
+            dist/fcitx5-custom-lite-arm64.apk --report dist/apk-size-comparison.json
+          cd dist
+          sha256sum *.apk > SHA256SUMS
       - uses: actions/upload-artifact@v7
         with:
           name: arm64-apk
@@ -92,6 +111,10 @@ jobs:
 
   smoke:
     needs: version
+    strategy:
+      fail-fast: false
+      matrix:
+        packaging: [full, lite]
     runs-on: ubuntu-24.04
     env:
       BUILD_VERSION_NAME: ${{ needs.version.outputs.name }}
@@ -122,7 +145,7 @@ jobs:
         run: bash scripts/build_personal_rime.sh x86_64
       - name: Build emulator IME, tests and matching plugins
         run: |
-          ./gradlew -PbuildABI=x86_64 :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest :plugin:chewing:assembleDebug :plugin:clipboard-filter:assembleDebug
+          ./gradlew -PbuildABI=x86_64 -PpersonalPackaging=${{ matrix.packaging }} :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest :plugin:chewing:assembleDebug :plugin:clipboard-filter:assembleDebug
       - name: Verify the debug plugin identities and signatures
         run: |
           apk=$(find app/build/outputs/apk/debug -name '*.apk' -print -quit)
@@ -143,7 +166,7 @@ jobs:
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: rime-runtime-test-results
+          name: rime-runtime-test-results-${{ matrix.packaging }}
           path: |
             app/build/reports/androidTests/
             app/build/outputs/androidTest-results/
@@ -154,12 +177,16 @@ jobs:
           cp "$(find app/build/outputs/apk/androidTest/debug -name '*.apk' -print -quit)" test-apks/app-debug-androidTest.apk
       - uses: actions/upload-artifact@v7
         with:
-          name: compatibility-test-apks
+          name: compatibility-test-apks-${{ matrix.packaging }}
           path: test-apks/
           if-no-files-found: error
 
   compat:
     needs: [version, smoke]
+    strategy:
+      fail-fast: false
+      matrix:
+        packaging: [full, lite]
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
@@ -170,7 +197,7 @@ jobs:
       - uses: android-actions/setup-android@v4
       - uses: actions/download-artifact@v8
         with:
-          name: compatibility-test-apks
+          name: compatibility-test-apks-${{ matrix.packaging }}
           path: test-apks
       - name: Enable Android emulator acceleration
         run: |
@@ -188,11 +215,49 @@ jobs:
       - uses: actions/upload-artifact@v7
         if: always()
         with:
-          name: android-6-compatibility-results
+          name: android-6-compatibility-results-${{ matrix.packaging }}
           path: compatibility-results/
 
+  upgrade:
+    needs: smoke
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v4
+      - uses: actions/download-artifact@v8
+        with:
+          name: compatibility-test-apks-full
+          path: test-apks/full
+      - uses: actions/download-artifact@v8
+        with:
+          name: compatibility-test-apks-lite
+          path: test-apks/lite
+      - name: Enable Android emulator acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Verify full to lite upgrade and full restoration preserve user data
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          script: bash scripts/run_personal_smoke.sh upgrade test-apks/full test-apks/lite
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: full-lite-upgrade-results
+          path: upgrade-results/
+
   release:
-    needs: [version, build, smoke, compat]
+    if: github.ref == 'refs/heads/personal-ice'
+    needs: [version, build, smoke, compat, upgrade]
     runs-on: ubuntu-24.04
     permissions:
       contents: write
@@ -210,20 +275,18 @@ jobs:
           cat > notes.md <<'EOF'
           小企鹅输入法定制版，适用于 arm64 安卓设备，主包内置 Rime、雾凇全拼、离线模型及 Anthy 日语。
 
-          本次修复：
-          - 进入文本框时默认展开工具栏，删除键一次即可删除正文，联想在中文上屏后显示。
-          - 修复剪贴板和常用内容搜索中的输入、删除、选区及返回原输入框行为。
-          - 修复链接清理对编码参数和跳转目标的破坏，保留查询值、路径和片段中的原始编码。
-          - 修复备份导入的目录越界检查，并补齐 Android 6 的分词兼容实现。
-          - 统一最终 APK 整数版本号，保留既有包名和签名，支持覆盖安装已有定制版。
-          - 修复外置插件的发现、独立包名和服务连接；附带 Chewing 注音、剪贴板过滤器两个可选插件。
+          本次新增轻量版：
+          - fcitx5-custom-arm64.apk：保留全部原有数据的完整版。
+          - fcitx5-custom-lite-arm64.apk：保留 Rime、雾凇全部词库、Octagram、Predict、Anthy 日语及现有工具功能；仅移除 Fcitx 备用拼音数据和随包码表。
+          - 两版共用原包名、签名和版本号，支持覆盖安装和互相切换；用户词库、自定义设置及已安装插件沿用。
+          - 轻量版不内置 Fcitx 自带拼音、双拼、二笔、五笔和自然码数据；使用这些方案的用户请选择完整版。
+          - 原生库和所有保留的数据经过逐文件一致性核对，实测安装包大小见 apk-size-comparison.json。
 
-          安装：
-          - fcitx5-custom-arm64.apk：输入法主程序。
-          - fcitx5-custom-chewing-arm64.apk：可选 Chewing 注音插件，配合本定制版主程序使用。
-          - fcitx5-custom-clipboard-filter.apk：可选剪贴板过滤器插件，配合本定制版主程序使用。
+          可选插件：
+          - fcitx5-custom-chewing-arm64.apk：Chewing 注音插件。
+          - fcitx5-custom-clipboard-filter.apk：剪贴板过滤器插件。
 
-          本次发布通过最终 Manifest、版本号、签名沿用、插件同签名和离线词库完整性检查，以及 Android 15 完整输入回归、Android 6 搜索编辑与数据处理回归。源码和依赖版本记录在本发布标签及附件中。
+          两版均通过签名、离线数据检查、Android 15 输入回归和 Android 6 兼容回归；另外验证完整版→轻量版→完整版覆盖安装后保留用户数据。
           EOF
           gh release create "custom-$BUILD_VERSION_NAME" dist/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "小企鹅输入法定制版 $BUILD_VERSION_NAME" --notes-file notes.md
 

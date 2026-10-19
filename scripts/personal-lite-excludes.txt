@@ -1,0 +1,15 @@
+# Only built-in alternative Pinyin and table data; keep engines for extensions.
+usr/share/libime/zh_CN.lm
+usr/share/libime/zh_CN.lm.predict
+usr/share/libime/sc.dict
+usr/share/libime/extb.dict
+usr/share/fcitx5/table/db.main.dict
+usr/share/fcitx5/table/wbpy.main.dict
+usr/share/fcitx5/table/wbx.main.dict
+usr/share/fcitx5/table/zrm.main.dict
+usr/share/fcitx5/inputmethod/pinyin.conf
+usr/share/fcitx5/inputmethod/shuangpin.conf
+usr/share/fcitx5/inputmethod/db.conf
+usr/share/fcitx5/inputmethod/wbpy.conf
+usr/share/fcitx5/inputmethod/wbx.conf
+usr/share/fcitx5/inputmethod/zrm.conf

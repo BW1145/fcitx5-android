@@ -37,6 +37,9 @@ methods = {
         "savedContentCanBeEditedOrderedAndRestoredFromBackup",
         "holdingBackspaceThenSwipingUpClearsOnceAndStopsRepeat",
     },
+    "PersonalPackagingTest": {
+        "prepareFullUpgrade", "verifyLiteUpgrade", "verifyFullRestore",
+    },
     "PersonalDataSafetyTest": {
         "clearUrlsDecodesOnlyTheOuterRedirectEncoding",
         "clearUrlsPreservesDirectAndSchemalessRedirectTargets",
@@ -133,6 +136,25 @@ PY
         result=1
     fi
 }
+
+if [[ "$mode" == "upgrade" ]]; then
+    full_dir="${2:?full APK directory required}"
+    lite_dir="${3:?lite APK directory required}"
+    output_root=upgrade-results
+    mkdir -p "$output_root"
+    adb install -r "$full_dir/app-debug.apk"
+    adb install -r -t "$full_dir/app-debug-androidTest.apk"
+    run_group prepare-full 'org.fcitx.fcitx5.android.PersonalPackagingTest#prepareFullUpgrade'
+    [[ "$result" == 0 ]] || exit "$result"
+    adb install -r "$lite_dir/app-debug.apk"
+    adb install -r -t "$lite_dir/app-debug-androidTest.apk"
+    run_group upgrade-lite 'org.fcitx.fcitx5.android.PersonalPackagingTest#verifyLiteUpgrade'
+    [[ "$result" == 0 ]] || exit "$result"
+    adb install -r "$full_dir/app-debug.apk"
+    adb install -r -t "$full_dir/app-debug-androidTest.apk"
+    run_group restore-full 'org.fcitx.fcitx5.android.PersonalPackagingTest#verifyFullRestore'
+    exit "$result"
+fi
 
 if [[ "$mode" == "compat" ]]; then
     apk_dir="${2:-test-apks}"
