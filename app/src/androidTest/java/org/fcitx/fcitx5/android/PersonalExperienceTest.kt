@@ -105,8 +105,12 @@ class PersonalExperienceTest {
                 reset()
                 activateIme("anthy")
                 "nihongo".forEach { sendKey(it);sendKey(it,up=true) };delay(200)
+                assertTrue("Japanese candidates appear while typing",getCandidates(0,64).isNotEmpty())
+                // Learned predictions may contain only one word. Conversion supplies
+                // the dictionary alternatives needed to verify priority changes.
+                sendKey(' ');sendKey(' ',up=true);delay(200)
                 val japanese=getCandidates(0,64)
-                assertTrue(japanese.size>1)
+                assertTrue("Japanese conversion offers alternatives: $japanese",japanese.size>1)
                 val word=japanese.first().text
                 triggerCandidateAction(0,-1002);delay(200)
                 assertNotEquals(word,getCandidates(0,64).first().text)
