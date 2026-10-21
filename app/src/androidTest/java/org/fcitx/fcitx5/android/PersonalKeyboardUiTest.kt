@@ -229,9 +229,11 @@ class PersonalKeyboardUiTest {
             fcitx.runOnReady { reset(); activateIme("rime") }
             savedSearchEntry = org.fcitx.fcitx5.android.data.SavedContentStore.put(null,"搜索回归","搜索插入成功")
             val savedLabel=context.getString(R.string.saved_content)
+            val expandLabel=context.getString(R.string.expand_toolbar)
+            await("The saved-content entry or toolbar expand control is visible") {
+                imeNodes().any { it.contentDescription?.toString() in listOf(savedLabel,expandLabel) }
+            }
             if(imeNodes().none { it.contentDescription?.toString()==savedLabel }) {
-                val expandLabel=context.getString(R.string.expand_toolbar)
-                await("Toolbar can be expanded") { imeNodes().any { it.contentDescription?.toString()==expandLabel } }
                 tapNode(imeNodes().first { it.contentDescription?.toString()==expandLabel })
             }
             await("Saved content toolbar entry is visible") { imeNodes().any { it.contentDescription?.toString()==savedLabel } }

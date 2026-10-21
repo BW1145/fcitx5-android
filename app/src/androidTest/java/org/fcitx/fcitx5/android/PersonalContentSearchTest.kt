@@ -184,9 +184,11 @@ class PersonalContentSearchTest {
 
     private fun openSearch() {
         val savedLabel = context.getString(R.string.saved_content)
+        val expand = context.getString(R.string.expand_toolbar)
+        await("The saved-content entry or toolbar expand control is visible") {
+            imeNodes().any { it.contentDescription?.toString() in listOf(savedLabel,expand) }
+        }
         if (imeNodes().none { it.contentDescription?.toString() == savedLabel }) {
-            val expand = context.getString(R.string.expand_toolbar)
-            await("Toolbar can be expanded") { imeNodes().any { it.contentDescription?.toString() == expand } }
             tap(imeNodes().first { it.contentDescription?.toString() == expand })
         }
         await("Saved content entry is visible") { imeNodes().any { it.contentDescription?.toString() == savedLabel } }
@@ -232,8 +234,18 @@ class PersonalContentSearchTest {
         instrumentation.runOnMainSync {
             val editor = activityRule.activity.editor
             editor.requestFocus()
+        }
+        await("The system has connected the focused input editor") {
+            var active=false
+            instrumentation.runOnMainSync {
+                val manager = context.getSystemService(Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
+                active=manager.isActive(activityRule.activity.editor)
+            }
+            active
+        }
+        instrumentation.runOnMainSync {
+            val editor = activityRule.activity.editor
             val manager = context.getSystemService(Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
-            manager.restartInput(editor)
             manager.showSoftInput(editor, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
         }
         await("Keyboard is visible") { imeNodes().any { it.viewIdResourceName?.endsWith(":id/button_space") == true } }
@@ -402,9 +414,11 @@ class PersonalContentSearchTest {
             }
             fun openAi() {
                 val label=context.getString(R.string.ai_assistant)
+                val expand=context.getString(R.string.expand_toolbar)
+                await("The AI entry or toolbar expand control is visible") {
+                    imeNodes().any { it.contentDescription?.toString() in listOf(label,expand) }
+                }
                 if(imeNodes().none { it.contentDescription?.toString()==label }) {
-                    val expand=context.getString(R.string.expand_toolbar)
-                    await("Toolbar expand control is visible") { imeNodes().any { it.contentDescription?.toString()==expand } }
                     tap(imeNodes().first { it.contentDescription?.toString()==expand })
                 }
                 await("AI entry is visible") { imeNodes().any { it.contentDescription?.toString()==label } }
