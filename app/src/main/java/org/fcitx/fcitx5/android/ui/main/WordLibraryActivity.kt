@@ -7,7 +7,9 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AlertDialog
 import androidx.core.widget.doAfterTextChanged
 import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.job
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.fcitx.fcitx5.android.daemon.FcitxDaemon
@@ -16,7 +18,8 @@ import java.text.DateFormat
 import java.util.Date
 
 class WordLibraryActivity : ExperienceActivity() {
-    private val connection by lazy { FcitxDaemon.connect("word-library") }
+    private val connectionName="word-library-${java.util.UUID.randomUUID()}"
+    private val connection by lazy { FcitxDaemon.connect(connectionName) }
     private lateinit var rows:LinearLayout
     private lateinit var query:EditText
     private var words=listOf<WordLibrary.Word>()
@@ -40,7 +43,9 @@ class WordLibraryActivity : ExperienceActivity() {
         setContentView(ScrollView(this).apply { addView(panel) });refresh()
     }
     private fun task(block:suspend ()->Unit) { lifecycleScope.launch {
-        try { block() } catch(e:Exception) { AlertDialog.Builder(this@WordLibraryActivity).setMessage(e.message ?: "操作未完成").setPositiveButton("知道了",null).show() }
+        try { block() }
+        catch(e:CancellationException) { throw e }
+        catch(e:Exception) { AlertDialog.Builder(this@WordLibraryActivity).setMessage(e.message ?: "操作未完成").setPositiveButton("知道了",null).show() }
     } }
     private fun refresh()=task { words=WordLibrary.words(connection);render() }
     private fun render() {
@@ -98,5 +103,10 @@ class WordLibraryActivity : ExperienceActivity() {
             4 -> AlertDialog.Builder(this).setMessage("删除这份历史备份？").setPositiveButton("删除") { _,_->WordLibrary.delete(s);render() }.setNegativeButton("取消",null).show()
         } }.show()
     }
-    override fun onDestroy() { FcitxDaemon.disconnect("word-library");super.onDestroy() }
+    override fun onDestroy() {
+        // Keep this instance's engine connection until cancelled work has rolled
+        // back. A recreated Activity owns a separate connection.
+        lifecycleScope.coroutineContext.job.invokeOnCompletion { FcitxDaemon.disconnect(connectionName) }
+        super.onDestroy()
+    }
 }

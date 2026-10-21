@@ -2,6 +2,7 @@
 package org.fcitx.fcitx5.android.ui.main.settings
 
 import android.os.Bundle
+import android.view.View
 import androidx.preference.*
 import org.fcitx.fcitx5.android.data.prefs.AppPrefs
 import org.fcitx.fcitx5.android.data.theme.ThemeManager
@@ -16,6 +17,7 @@ class SettingsSearchFragment : PaddingPreferenceFragment() {
     private val entries = mutableListOf<Entry>()
     private lateinit var results: PreferenceCategory
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
+        entries.clear()
         val ctx = requireContext()
         val p = AppPrefs.getInstance()
         listOf(Triple(p.keyboard,SettingsRoute.VirtualKeyboard,"按键与候选"),
@@ -56,6 +58,12 @@ class SettingsSearchFragment : PaddingPreferenceFragment() {
             entries += Entry(ctx.getString(title), "用户数据、配置与备份迁移", key, SettingsRoute.Advanced, "高级与备份")
         }
         show("")
+    }
+    override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
+        super.onViewCreated(view, savedInstanceState)
+        // PreferenceFragment restores the non-persistent query in super; keep
+        // the visible results in step with it after recreation or navigation.
+        show(findPreference<EditTextPreference>("settings_search_query")?.text.orEmpty())
     }
     private fun aliases(key: String) = when {
         "vibration" in key || "haptic" in key -> "震动 振动 触感 马达 力度 强度"

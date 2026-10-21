@@ -35,6 +35,8 @@ public:
         while(std::getline(input,line)) {
             if (!line.empty() && line.back()=='\r') line.pop_back();
             if (line.empty()) continue;
+            if (std::count(line.begin(),line.end(),'\t')!=3)
+                throw std::runtime_error("Invalid candidate preference row");
             std::vector<std::string> fields;
             std::istringstream row(line);std::string field;
             while (std::getline(row,field,'\t')) fields.push_back(field);

@@ -17,6 +17,7 @@
 
 #include "androidfrontend.h"
 #include "candidatepreferences.h"
+#include "preferredcandidate.h"
 #include "../personal-anthy-public.h"
 #include "../personal-rime-public.h"
 
@@ -345,6 +346,18 @@ public:
         if (!pageable) {
             return;
         }
+        if (ensureCandidateRevision()) beginPreferences(paged_);
+        if (prefer_ && isAnthy() && pageable->currentPage() >= 0) {
+            const int page = pageable->currentPage() + (delta > 0 ? 1 : -1);
+            if (page < 0 || page >= pageable->totalPages()) return;
+            // setPage changes the lookup page without previewing Anthy's raw
+            // cursor first. Select only after applying the page's preferences.
+            pageable->setPage(page);
+            beginPreferences(paged_);
+            previewPreferredAnthy(false, true, delta, false);
+            updateUserInterface(UserInterfaceComponent::InputPanel);
+            return;
+        }
         if (delta > 0 && pageable->hasNext()) {
             pageable->next();
             updateUserInterface(UserInterfaceComponent::InputPanel);
@@ -363,9 +376,9 @@ public:
         if(release) return true;
         const auto *entry=frontend_->instance()->inputMethodEntry(this);
         if(key.sym()==FcitxKey_space && entry && entry->uniqueName()=="anthy") {
-            const auto index=originalIndex(0);
-            return index>=0 && frontend_->instance()->addonManager().addon("anthy")->call<IAnthyEngine::personalSelectPreview>(
-                this,rawCandidate(index).text().toString());
+            const bool converting=frontend_->instance()->addonManager().addon("anthy")
+                ->call<IAnthyEngine::personalIsConverting>(this);
+            return previewPreferredAnthy(converting);
         }
         const int index=key.sym()==FcitxKey_0 ? 9 :
             key.sym()>=FcitxKey_1 && key.sym()<=FcitxKey_9 ? key.sym()-FcitxKey_1 : 0;
@@ -405,6 +418,45 @@ private:
     bool prefer_=false, paged_=false, ended_=false;
     int scanned_=0;
     std::vector<int> order_, lowered_;
+
+    bool isAnthy() {
+        const auto *entry=frontend_->instance()->inputMethodEntry(this);
+        return entry && entry->uniqueName()=="anthy";
+    }
+    bool previewPreferredAnthy(bool advance, bool keepCurrent=false,
+                               int direction=1, bool wrap=true) {
+        auto list=inputPanel().candidateList();
+        if (!list) return false;
+        const auto *bulk=list->toBulk();
+        const int total=paged_ || !bulk ? list->size() : bulk->totalSize();
+        if (total<0) return false; // Anthy's candidate lists have a finite size.
+        fillOrder(total);
+        int current=-1;
+        if (advance || keepCurrent) {
+            const auto *cursor=list->toBulkCursor();
+            current=paged_ || !cursor ? list->cursorIndex() : cursor->globalCursorIndex();
+        }
+        const auto *pageable=list->toPageable();
+        const int startPage=pageable ? pageable->currentPage() : -1;
+        auto movePage=[&]() {
+            auto currentList=inputPanel().candidateList();
+            auto *pages=currentList ? currentList->toPageable() : nullptr;
+            if (!paged_ || !pages || startPage<0 || pages->totalPages()<=0) return false;
+            int page=pages->currentPage()+(direction>0 ? 1 : -1);
+            if (page<0 || page>=pages->totalPages()) {
+                if (!wrap) return false;
+                page=direction>0 ? 0 : pages->totalPages()-1;
+            }
+            pages->setPage(page);
+            beginPreferences(true);
+            fillOrder(currentList->size());
+            return page!=startPage;
+        };
+        const int index=preferredCandidateIndex(order_,current,advance,movePage);
+        if (index<0) return true; // No visible choice: do not preview a hidden word.
+        return frontend_->instance()->addonManager().addon("anthy")
+            ->call<IAnthyEngine::personalSelectPreview>(this,rawCandidate(index).text().toString());
+    }
 
     void beginPreferences(bool paged) {
         ensureCandidateRevision(true);

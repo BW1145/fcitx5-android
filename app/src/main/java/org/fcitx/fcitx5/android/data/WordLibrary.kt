@@ -2,6 +2,8 @@
 package org.fcitx.fcitx5.android.data
 
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -116,7 +118,21 @@ object WordLibrary {
         val rollback=snapshotUnlocked(connection,"${if(merge) "合并" else "恢复"}前自动保存")
         try {
             operation(connection,"${if(merge) "merge" else "restore"}/${snapshot.id}")
-        } catch(e:Exception) { operation(connection,"restore/${rollback.id}");throw e }
+        } catch(e:Exception) {
+            // A native operation may have changed data before cancellation reaches
+            // its caller. Finish recovery even if the owning screen is closing.
+            try {
+                withContext(NonCancellable) { operation(connection,"restore/${rollback.id}") }
+            } catch(recovery:Exception) {
+                // A recovered coroutine exception may be unwrapped on rethrow,
+                // losing newly added suppressed errors. Keep both in a fresh
+                // exception, while preserving cancellation as cancellation.
+                val failure=if(e is CancellationException) CancellationException(e.message).apply { initCause(e) }
+                    else IllegalStateException(e.message,e)
+                throw failure.apply { addSuppressed(recovery) }
+            }
+            throw e
+        }
         finally { notifyRulesChanged() }
         }
     }

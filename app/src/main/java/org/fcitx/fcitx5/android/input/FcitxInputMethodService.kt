@@ -1248,6 +1248,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         closeContentSearch()
         editorSession++
         inputActionToken++
+        val target = inputActionToken
         Timber.d("onFinishInputView: finishingInput=$finishingInput")
         decorLocationUpdated = false
         inputDeviceMgr.onFinishInputView()
@@ -1257,6 +1258,9 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         }
         resetComposingState()
         postFcitxJob {
+            // Hiding the keyboard can leave the same editor active. Keep native
+            // callbacks on the new target even when no onStartInput follows.
+            setInputTarget(target)
             focusOutIn()
         }
         hideStatusIcon()

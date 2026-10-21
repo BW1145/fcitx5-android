@@ -65,6 +65,7 @@ class InputTargetTest {
             override suspend fun setInputTarget(target:Long) { reset();this@Engine.target=target }
             override suspend fun setCapFlags(flags:CapabilityFlags) {}
             override suspend fun focus(focus:Boolean) {}
+            override suspend fun focusOutIn() {}
             override suspend fun reset() { resets++;preedit=0 }
             override suspend fun sendKey(sym:KeySym,states:KeyStates,code:Int,up:Boolean,timestamp:Int) {
                 if(up) return
@@ -115,9 +116,14 @@ class InputTargetTest {
         fun action(action:KeyAction) { keys.listener.onKeyAction(action,KeyActionListener.Source.Keyboard) }
         fun deliver(event:FcitxEvent<*>) { method.invoke(service,event) }
         fun drain() {
-            val active=mutableListOf<Job>()
+            var active:Job?=null
             repeat(50) {
-                while(true) { val j=jobs.tryReceive().getOrNull() ?: break;active+=j;j.start() }
+                // Match the service's jobs.consumeEach { it.join() }: later
+                // commands cannot overtake a suspended editor/barrier operation.
+                if(active?.isCompleted!=false) {
+                    active=jobs.tryReceive().getOrNull()
+                    active?.start()
+                }
                 engine.events.toList().also { engine.events.clear() }.forEach(::deliver)
                 while(true) {
                     val event=events.tryReceive().getOrNull() ?: break
@@ -125,7 +131,7 @@ class InputTargetTest {
                     completion.complete(Unit)
                 }
                 shadowOf(Looper.getMainLooper()).idle()
-                if(active.all { it.isCompleted } && engine.events.isEmpty()) return
+                if(active==null && engine.events.isEmpty()) return
             }
             error("Ordered input operations did not finish")
         }
@@ -173,6 +179,37 @@ class InputTargetTest {
         assertEquals("second",second.text.toString())
         h.engine.emit(FcitxEvent.CommitStringEvent(FcitxEvent.CommitStringEvent.Data("current",-1)));h.drain()
         assertEquals("secondcurrent",second.text.toString())
+    }
+
+    @Test fun candidateCommitReplacesCompositionBeforeClearingPreedit()=Harness().use { h ->
+        val host=h.host("prefix");h.drain()
+        h.engine.emit(FcitxEvent.ClientPreeditEvent(FormattedText(arrayOf("nihao"),intArrayOf(0),5)))
+        h.drain()
+        assertEquals("prefixnihao",host.text.toString())
+        // The service must process the commit before the following empty preedit,
+        // even when the UI has not drawn another frame yet.
+        h.engine.emit(FcitxEvent.CommitStringEvent(FcitxEvent.CommitStringEvent.Data("你好",-1)))
+        h.engine.emit(FcitxEvent.ClientPreeditEvent(FormattedText.Empty))
+        h.drain()
+        assertEquals("prefix你好",host.text.toString())
+        assertEquals(-1,android.view.inputmethod.BaseInputConnection.getComposingSpanStart(host.text))
+        h.engine.emit(FcitxEvent.ClientPreeditEvent(FormattedText(arrayOf("ma"),intArrayOf(0),2)))
+        h.drain()
+        assertEquals("prefix你好ma",host.text.toString())
+    }
+
+    @Test fun hidingKeyboardKeepsCallbacksWorkingInTheSameEditor()=Harness().use { h ->
+        val host=h.host("draft");h.drain()
+        h.engine.emit(FcitxEvent.CommitStringEvent(FcitxEvent.CommitStringEvent.Data("stale",-1)))
+        h.service.onFinishInputView(false)
+        h.drain()
+        assertEquals("Callbacks queued before hiding are discarded","draft",host.text.toString())
+        assertEquals("Native and service targets stay synchronized",h.service.inputActionToken,h.engine.target)
+        // A hidden keyboard can continue serving hardware input in the same editor,
+        // without Android starting a new input session.
+        h.engine.emit(FcitxEvent.CommitStringEvent(FcitxEvent.CommitStringEvent.Data("current",-1)))
+        h.drain()
+        assertEquals("draftcurrent",host.text.toString())
     }
 
     @Test fun delayedCandidateMenuCannotOpenForAChangedListOrClosedKeyboard()=Harness().use { h ->

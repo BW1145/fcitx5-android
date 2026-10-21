@@ -130,12 +130,49 @@ class ExperienceUiTest {
 
     @Test fun experienceDefaultsPreserveAnExplicitCandidateLayout() {
         val prefs=AppPrefs.getInstance().keyboard.expandedCandidateStyle
-        val previous=prefs.getValue()
+        val previous=prefs.sharedPreferences.getString(prefs.key,null)
         val root=java.nio.file.Files.createTempDirectory("experience-defaults").toFile()
         try {
             prefs.setValue(org.fcitx.fcitx5.android.input.candidates.expanded.ExpandedCandidateStyle.Grid)
             org.fcitx.fcitx5.android.core.PersonalDefaults.installExperienceDefaults(root)
             assertEquals(org.fcitx.fcitx5.android.input.candidates.expanded.ExpandedCandidateStyle.Grid,prefs.getValue())
-        } finally { prefs.setValue(previous);root.deleteRecursively() }
+        } finally {
+            prefs.sharedPreferences.edit().apply { if(previous==null) remove(prefs.key) else putString(prefs.key,previous) }.commit()
+            root.deleteRecursively()
+        }
+    }
+
+    @Test fun experienceDefaultsSeedOnlyAnUnsetCandidateLayout() {
+        val prefs=AppPrefs.getInstance().keyboard.expandedCandidateStyle
+        val previous=prefs.sharedPreferences.getString(prefs.key,null)
+        val root=java.nio.file.Files.createTempDirectory("experience-defaults").toFile()
+        try {
+            prefs.sharedPreferences.edit().remove(prefs.key).commit()
+            org.fcitx.fcitx5.android.core.PersonalDefaults.installExperienceDefaults(root)
+            assertEquals(org.fcitx.fcitx5.android.input.candidates.expanded.ExpandedCandidateStyle.Flexbox,prefs.getValue())
+            prefs.setValue(org.fcitx.fcitx5.android.input.candidates.expanded.ExpandedCandidateStyle.Grid)
+            org.fcitx.fcitx5.android.core.PersonalDefaults.installExperienceDefaults(root)
+            assertEquals(org.fcitx.fcitx5.android.input.candidates.expanded.ExpandedCandidateStyle.Grid,prefs.getValue())
+        } finally {
+            prefs.sharedPreferences.edit().apply { if(previous==null) remove(prefs.key) else putString(prefs.key,previous) }.commit()
+            root.deleteRecursively()
+        }
+    }
+
+    @Test fun settingsSearchRestoresItsFilteredResultsWithTheQuery() {
+        val controller=Robolectric.buildActivity(FragmentActivity::class.java).setup()
+        try {
+            controller.get().setTheme(R.style.Theme_FcitxAppTheme)
+            val fragment=org.fcitx.fcitx5.android.ui.main.settings.SettingsSearchFragment()
+            controller.get().supportFragmentManager.beginTransaction().replace(android.R.id.content,fragment,"search").commitNow()
+            val query=fragment.findPreference<androidx.preference.EditTextPreference>("settings_search_query")!!
+            query.text="API";query.callChangeListener(query.text)
+            controller.recreate()
+            val restored=controller.get().supportFragmentManager.findFragmentByTag("search") as org.fcitx.fcitx5.android.ui.main.settings.SettingsSearchFragment
+            assertEquals("API",restored.findPreference<androidx.preference.EditTextPreference>("settings_search_query")!!.text)
+            val results=restored.preferenceScreen.getPreference(1) as androidx.preference.PreferenceCategory
+            assertEquals(1,results.preferenceCount)
+            assertTrue(results.getPreference(0).title.toString().contains("AI"))
+        } finally { controller.pause().stop().destroy() }
     }
 }

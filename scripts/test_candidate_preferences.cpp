@@ -30,6 +30,47 @@ int main(int argc,char **argv) {
     assert(second.load());assert(first.mode(scope,"你好")==1);
     fs::remove(file);
     assert(first.load());assert(first.mode(scope,"你好")==0);
+    // Legacy Rime scopes move to one schema without affecting other schemas.
+    const auto legacyRime=preferenceHex("rime")+"\t"+preferenceHex("nihao");
+    const auto schemaA=preferenceHex("rime:schema_a")+"\t"+preferenceHex("nihao");
+    const auto schemaB=preferenceHex("rime:schema_b")+"\t"+preferenceHex("nihao");
+    first.set(legacyRime,"你好",1);
+    first.set(schemaA,"你好",2);
+    first.set(legacyRime,"您好",1);
+    first.migrateScope(legacyRime,schemaA);
+    assert(!first.hasScope(legacyRime));
+    assert(first.mode(schemaA,"你好")==2); // Existing scoped choices win.
+    assert(first.mode(schemaA,"您好")==1);
+    assert(!first.hasScope(schemaB));
+    // Legacy Anthy rows are claimed one matching word at a time by reading.
+    const auto legacyAnthy=preferenceHex("anthy")+"\t"+preferenceHex("japanese");
+    const auto readingA=preferenceHex("anthy")+"\t"+preferenceHex("にほんご");
+    const auto readingB=preferenceHex("anthy")+"\t"+preferenceHex("にっぽんご");
+    first.set(legacyAnthy,"日本語",1);
+    first.set(legacyAnthy,"別の語",2);
+    second.migrateWord(legacyAnthy,readingA,"日本語");
+    assert(first.mode(readingA,"日本語")==1);
+    assert(first.mode(readingB,"日本語")==0);
+    assert(first.mode(legacyAnthy,"日本語")==0);
+    assert(first.mode(legacyAnthy,"別の語")==2);
+    // Snapshot merges share the cache and preserve current choices on conflict.
+    second.merge({{schemaA+"\t"+preferenceHex("你好"),1},
+                  {schemaB+"\t"+preferenceHex("你好"),1}});
+    assert(first.mode(schemaA,"你好")==2);
+    assert(first.mode(schemaB,"你好")==1);
+    assert(!first.load());
+    const auto saved=CandidatePreferences::read(file);
+    assert(saved.size()==5);
+    for(const auto &row:std::vector<std::string>{
+            "zz\t00\t00\thide\n", "0\t00\t00\thide\n",
+            "c0af\t00\t00\thide\n", "00\t00\t00\tinvalid\n",
+            "61\t62\t63\thide\t\n"}) {
+        { std::ofstream out(file);out<<row; }
+        bool rejected=false;
+        try { first.load(true); } catch(const std::runtime_error &) { rejected=true; }
+        assert(rejected);
+        assert(first.mode(schemaA,"你好")==2); // Failed reads keep the valid cache.
+    }
     { std::ofstream out(file);
       for(int i=0;i<5000;++i) out<<scope<<'\t'<<preferenceHex("词条"+std::to_string(i))<<"\tlower\n";
     }
