@@ -185,6 +185,31 @@ class PersonalKeyboardUiTest {
             }
             screenshot("pinyin-edit")
 
+            // After editing in the middle, move to the end before committing a
+            // complete candidate. The pinyin row must clear without another key.
+            fcitx.runOnReady { moveCursor(inputPanelCached.preedit.codePointCountUntil(inputPanelCached.preedit.length)) }
+            await("Edited Chinese candidate is visible") { imeNodes().any { it.text?.toString()=="你好" } }
+            tapNode(imeNodes().first { it.text?.toString()=="你好" })
+            await("Selecting a candidate clears its pinyin immediately") {
+                fcitx.runImmediately { clientPreeditCached.isEmpty() && inputPanelCached.preedit.isEmpty() } &&
+                    imeNodes().none { it.text?.toString()?.startsWith("ni hao")==true }
+            }
+            var beforeSentence=""
+            instrumentation.runOnMainSync { beforeSentence=activityRule.activity.editor.text.toString() }
+            type("renshengjishinian")
+            await("The sentence has candidates") { fcitx.runImmediately { getCandidates(0,1).isNotEmpty() } }
+            val sentence=fcitx.runOnReady { getCandidates(0,1).first().text }
+            val sentencePinyin=fcitx.runOnReady { inputPanelCached.preedit.toString() }
+            await("The sentence candidate is visible") { imeNodes().any { it.text?.toString()==sentence } }
+            tapNode(imeNodes().first { it.text?.toString()==sentence })
+            await("Sentence commits once and leaves no pinyin in the keyboard") {
+                var value=""
+                instrumentation.runOnMainSync { value=activityRule.activity.editor.text.toString() }
+                value==beforeSentence+sentence &&
+                    fcitx.runImmediately { clientPreeditCached.isEmpty() && inputPanelCached.preedit.isEmpty() } &&
+                    imeNodes().none { it.text?.toString()?.startsWith(sentencePinyin)==true }
+            }
+
             fcitx.runOnReady { reset(); activateIme("anthy") }
             type("nihongo")
             await("Japanese candidates are loaded while typing") { fcitx.runImmediately { getCandidates(0, 20).isNotEmpty() } }

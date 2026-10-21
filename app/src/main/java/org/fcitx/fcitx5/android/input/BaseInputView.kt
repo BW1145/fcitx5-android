@@ -14,7 +14,9 @@ import androidx.core.text.buildSpannedString
 import androidx.core.text.color
 import androidx.core.view.WindowInsetsCompat
 import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
 import org.fcitx.fcitx5.android.R
 import org.fcitx.fcitx5.android.core.FcitxEvent
@@ -46,9 +48,19 @@ abstract class BaseInputView(
     private var eventHandlerJob: Job? = null
 
     private fun setupFcitxEventHandler() {
-        eventHandlerJob = service.lifecycleScope.launch {
-            fcitx.runImmediately { eventFlow }.collect {
-                handleFcitxEvent(it)
+        eventHandlerJob = service.lifecycleScope.launch(start = CoroutineStart.UNDISPATCHED) {
+            // Host editor calls may hold Main while native input continues.
+            // Preserve the empty-preedit transition instead of dropping it when
+            // other candidate/status events fill the shared notification buffer.
+            val events = Channel<FcitxEvent<*>>(Channel.UNLIMITED)
+            val listener: (FcitxEvent<*>) -> Unit = { events.trySend(it) }
+            fcitx.runImmediately { addInputEventListener(listener) }
+            try {
+                onStartHandleFcitxEvent()
+                for (event in events) handleFcitxEvent(event)
+            } finally {
+                fcitx.runImmediately { removeInputEventListener(listener) }
+                events.cancel()
             }
         }
     }
@@ -57,10 +69,9 @@ abstract class BaseInputView(
         set(value) {
             field = value
             if (field) {
-                onStartHandleFcitxEvent()
                 if (eventHandlerJob == null) {
                     setupFcitxEventHandler()
-                }
+                } else onStartHandleFcitxEvent()
             } else {
                 eventHandlerJob?.cancel()
                 eventHandlerJob = null

@@ -295,8 +295,8 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         lifecycleScope.launch {
             jobs.consumeEach { it.join() }
         }
-        // Register synchronously before accepting input. UI components still use eventFlow,
-        // while commits/deletions here must not be dropped or overtake a target switch.
+        // Register synchronously before accepting input. Commits/deletions must
+        // retain their order and must not overtake an editor target switch.
         fcitx.runImmediately { addInputEventListener(inputEventListener) }
         lifecycleScope.launch {
             for (message in inputEvents) {
