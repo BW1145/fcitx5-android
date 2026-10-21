@@ -15,6 +15,31 @@ require(personalPackaging in setOf("full", "lite")) {
     "personalPackaging must be full or lite"
 }
 
+// Resolve the UI test's Android runtime through Gradle's Maven transport and cache.
+// Robolectric then reads a local JAR instead of downloading during test execution.
+val robolectricSdk = configurations.create("robolectricSdk") {
+    isCanBeConsumed = false
+    isTransitive = false
+}
+val robolectricSdkVersion = "15-robolectric-13954326-i7"
+dependencies {
+    add(robolectricSdk.name, "org.robolectric:android-all-instrumented:$robolectricSdkVersion")
+}
+// Keep Robolectric's native resource loader outside checkout paths containing spaces.
+val robolectricSdkDirectory = providers.systemProperty("user.home").map {
+    File(it, ".m2/repository/org/robolectric/android-all-instrumented/$robolectricSdkVersion")
+}
+val prepareRobolectricSdk = tasks.register<Copy>("prepareRobolectricSdk") {
+    from(robolectricSdk)
+    into(robolectricSdkDirectory)
+}
+tasks.withType<Test>().configureEach {
+    dependsOn(prepareRobolectricSdk)
+    systemProperty("robolectric.offline", "true")
+    systemProperty("robolectric.dependency.dir", robolectricSdkDirectory.get().absolutePath)
+    testLogging.exceptionFormat = org.gradle.api.tasks.testing.logging.TestExceptionFormat.FULL
+}
+
 android {
     namespace = "org.fcitx.fcitx5.android"
 

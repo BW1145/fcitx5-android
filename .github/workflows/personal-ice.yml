@@ -148,8 +148,12 @@ jobs:
       - name: Build Rime for emulator
         run: bash scripts/build_personal_rime.sh x86_64
       - name: Build emulator IME, tests and matching plugins
+        id: emulator_build
+        continue-on-error: true
         run: |
-          ./gradlew -PbuildABI=x86_64 -PpersonalPackaging=${{ matrix.packaging }} :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest :plugin:chewing:assembleDebug :plugin:clipboard-filter:assembleDebug
+          set -o pipefail
+          mkdir -p build/personal-ci
+          ./gradlew --continue --stacktrace -PbuildABI=x86_64 -PpersonalPackaging=${{ matrix.packaging }} :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest :plugin:chewing:assembleDebug :plugin:clipboard-filter:assembleDebug 2>&1 | tee build/personal-ci/emulator-build.log
       - name: Verify the debug plugin identities and signatures
         run: |
           apk=$(find app/build/outputs/apk/debug -name '*.apk' -print -quit)
@@ -160,6 +164,8 @@ jobs:
             --version-code "$BUILD_VERSION_CODE" --version-name "$BUILD_VERSION_NAME" \
             --plugin-apk "$chewing" --plugin-apk "$clipboard"
       - name: Test input, content search, data safety and plugin IPC on API 35
+        id: emulator_tests
+        continue-on-error: true
         uses: reactivecircus/android-emulator-runner@v2
         with:
           api-level: 35
@@ -172,6 +178,9 @@ jobs:
         with:
           name: rime-runtime-test-results-${{ matrix.packaging }}
           path: |
+            build/personal-ci/
+            app/build/reports/tests/
+            app/build/test-results/
             app/build/reports/androidTests/
             app/build/outputs/androidTest-results/
             app/build/reports/theme-previews/
@@ -185,6 +194,19 @@ jobs:
           name: compatibility-test-apks-${{ matrix.packaging }}
           path: test-apks/
           if-no-files-found: error
+      - name: Summarize build and runtime checks
+        if: always()
+        env:
+          BUILD_RESULT: ${{ steps.emulator_build.outcome }}
+          RUNTIME_RESULT: ${{ steps.emulator_tests.outcome }}
+        run: |
+          {
+            echo '### ${{ matrix.packaging }} checks'
+            echo "- Build and unit tests: $BUILD_RESULT"
+            echo "- Android 15 runtime tests: $RUNTIME_RESULT"
+            echo '- Logs, unit test XML and runtime reports are in rime-runtime-test-results-${{ matrix.packaging }}.'
+          } >> "$GITHUB_STEP_SUMMARY"
+          [[ "$BUILD_RESULT" == success && "$RUNTIME_RESULT" == success ]]
 
   compat:
     needs: [version, smoke]
