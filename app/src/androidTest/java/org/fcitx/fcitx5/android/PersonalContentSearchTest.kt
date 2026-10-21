@@ -139,7 +139,7 @@ class PersonalContentSearchTest {
     private fun await(description: String, timeout: Long = 30_000, predicate: () -> Boolean) {
         val end = SystemClock.uptimeMillis() + timeout
         while (!predicate()) {
-            assertTrue("$description. IME text: ${imeNodes().mapNotNull { it.text }}", SystemClock.uptimeMillis() < end)
+            assertTrue("$description. Host text: ${hostText().replace("\n","\\n")}. IME text: ${imeNodes().mapNotNull { it.text }}", SystemClock.uptimeMillis() < end)
             SystemClock.sleep(50)
         }
     }
@@ -428,17 +428,18 @@ class PersonalContentSearchTest {
             gate.await()
             await("Queued AI input cannot leak into the host after closing") { hostText()==original+"w" }
             // The English engine still shows spelling candidates for the host's
-            // composing w. Commit it before looking for the idle toolbar.
+            // composing w. Return commits it and inserts a newline in this host.
             key(R.id.button_return)
+            val afterHost=original+"w\n"
             await("Host composition is committed before reopening AI") {
-                hostText()==original+"w" && fcitx.runImmediately { clientPreeditCached.isEmpty() && inputPanelCached.preedit.isEmpty() }
+                hostText()==afterHost && fcitx.runImmediately { clientPreeditCached.isEmpty() && inputPanelCached.preedit.isEmpty() }
             }
             openAi()
             await("Reopening AI restores its separate draft") { query()=="abc" }
-            assertEquals(original+"w",hostText())
+            assertEquals(afterHost,hostText())
             tap(imeNodes().first { it.text?.toString()==context.getString(android.R.string.cancel) })
             type("v")
-            await("Host input remains usable after AI closes") { hostText()==original+"wv" }
+            await("Host input remains usable after AI closes") { hostText()==afterHost+"v" }
         } finally {
             release.countDown();activityRule.finishActivity()
             instrumentation.runOnMainSync { ToolbarLayout.save(previousToolbar) }

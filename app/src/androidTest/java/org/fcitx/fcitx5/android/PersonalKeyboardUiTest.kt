@@ -217,8 +217,15 @@ class PersonalKeyboardUiTest {
             type("sousuo")
             await("Search keyword candidate is visible") { imeNodes().any { it.text?.toString()=="搜索" } }
             tapNode(imeNodes().first { it.text?.toString()=="搜索" })
+            await("Search keyword is committed before selecting a result") {
+                fcitx.runImmediately { clientPreeditCached.isEmpty() && inputPanelCached.preedit.isEmpty() } &&
+                    imeNodes().any { it.className?.toString()=="android.widget.EditText" && it.text?.toString()=="搜索" }
+            }
             await("Search matches saved content") { imeNodes().any { it.text?.toString()=="搜索回归" } }
             instrumentation.runOnMainSync { assertEquals(committed,activityRule.activity.editor.text.toString()) }
+            // Candidate/preedit visibility changes the IME window's position.
+            // Obtain result coordinates after that layout transition settles.
+            automation.waitForIdle(100,5_000)
             tapNode(imeNodes().first { it.text?.toString()=="搜索回归" })
             await("Search result inserts into the original editor") {
                 var value=""
