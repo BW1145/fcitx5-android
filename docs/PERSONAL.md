@@ -40,7 +40,7 @@ Rime 和词库随 APK 一起打包。雾凇源码固定在 `third_party/rime-ice
 
 签名使用本仓库的 `PERSONAL_SIGNING_KEY` 和 `PERSONAL_SIGNING_PASSWORD` GitHub Actions secrets。更新安装包须沿用同一签名。
 
-工作流为每次发布设置递增的 `versionCode`（`2000 + 工作流运行编号`），并检查最终 APK 的包名、版本、架构和证书。手动构建可使用 `-PbuildVersionName=... -PbuildVersionCode=...`；ABI 拆分不会覆盖显式指定的版本号。主程序与插件共用 `-PmainApplicationId=...`，默认值为本定制版包名。
+工作流为每次发布设置递增的 `versionCode`（`3000 + 工作流运行编号`），并检查最终 APK 的包名、版本、架构和证书。手动构建可使用 `-PbuildVersionName=... -PbuildVersionCode=...`；ABI 拆分不会覆盖显式指定的版本号。主程序与插件共用 `-PmainApplicationId=...`，默认值为本定制版包名。
 
 ## 来源和许可
 

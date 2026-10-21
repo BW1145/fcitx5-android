@@ -27,8 +27,8 @@ jobs:
       - id: version
         name: Choose one version for all delivered APKs
         run: |
-          echo "name=1.2.$GITHUB_RUN_NUMBER" >> "$GITHUB_OUTPUT"
-          echo "code=$((2000 + GITHUB_RUN_NUMBER))" >> "$GITHUB_OUTPUT"
+          echo "name=1.3.$GITHUB_RUN_NUMBER" >> "$GITHUB_OUTPUT"
+          echo "code=$((3000 + GITHUB_RUN_NUMBER))" >> "$GITHUB_OUTPUT"
           echo "timestamp=$(date +%s000)" >> "$GITHUB_OUTPUT"
 
   build:

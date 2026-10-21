@@ -46,7 +46,7 @@
 
 ## 下一步
 
-源码通过本地检查后交由用户 fork 的 `personal-ice` 构建与发布。后续从 GitHub Personal Custom APK 的对应提交检查结果接续；执行记录见 [PLAN.md](PLAN.md)。
+`1.3` 系列由用户 fork 的 `personal-ice` 构建与发布。正式 APK、签名与体积检查已通过；词库回归已按分段选词与完整上屏的实际行为修正，后续从 GitHub Personal Custom APK 的对应提交检查结果接续；执行记录见 [PLAN.md](PLAN.md)。
 
 ## 材料
 

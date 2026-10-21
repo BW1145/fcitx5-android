@@ -6,8 +6,6 @@ import android.graphics.Canvas
 import android.view.View
 import androidx.test.platform.app.InstrumentationRegistry
 import kotlinx.coroutines.*
-import kotlinx.coroutines.flow.filterIsInstance
-import kotlinx.coroutines.flow.first
 import org.fcitx.fcitx5.android.core.FcitxEvent
 import org.fcitx.fcitx5.android.daemon.FcitxDaemon
 import org.fcitx.fcitx5.android.data.*
@@ -72,9 +70,29 @@ class PersonalExperienceTest {
                 val lowered=getCandidates(0,64)
                 assertTrue(lowered.indexOfFirst { it.text=="验收词甲" }>0)
                 val expected=lowered.first().text
-                val committed=async(start=CoroutineStart.UNDISPATCHED) { eventFlow.filterIsInstance<FcitxEvent.CommitStringEvent>().first() }
-                sendKey(' ')
-                assertEquals("Space selects the first displayed candidate",expected,withTimeout(5000) { committed.await() }.data.text)
+                data class Selection(val commits:List<String>,val preedit:String,val clientPreedit:String)
+                suspend fun selectFirst(space:Boolean):Selection {
+                    val commits=java.util.concurrent.CopyOnWriteArrayList<String>()
+                    val listener:(FcitxEvent<*>)->Unit = { event ->
+                        if(event is FcitxEvent.CommitStringEvent) commits+=event.data.text
+                    }
+                    addInputEventListener(listener)
+                    try {
+                        if(space) { sendKey(' ');sendKey(' ',up=true) }
+                        else assertTrue(select(0))
+                        return Selection(commits.toList(),inputPanelCached.preedit.toString(),clientPreeditCached.toString())
+                    } finally { removeInputEventListener(listener) }
+                }
+                val clicked=selectFirst(false)
+                assertTrue("Selection inserts the displayed word into the composition or commits it",
+                    clicked.commits.joinToString("").startsWith(expected) || clicked.preedit.startsWith(expected) || clicked.clientPreedit.startsWith(expected))
+                reset();"yanshoucijia".forEach { sendKey(it) };delay(200)
+                assertEquals(expected,getCandidates(0,1).first().text)
+                assertEquals("Space and a tap select the same displayed word, including partial composition",clicked,selectFirst(true))
+                reset();"nihao".forEach { sendKey(it) };delay(200)
+                val complete=getCandidates(0,1).first().text
+                val finished=selectFirst(true)
+                assertEquals("A full-length choice commits immediately",listOf(complete),finished.commits)
                 reset();"yanshoucijia".forEach { sendKey(it) };delay(200)
                 val victim=getCandidates(0,64).indexOfFirst { it.text=="验收词甲" };assertTrue(victim>=0)
                 triggerCandidateAction(victim,-1001);delay(200)
