@@ -66,7 +66,11 @@ class InputTargetTest {
             override suspend fun setCapFlags(flags:CapabilityFlags) {}
             override suspend fun focus(focus:Boolean) {}
             override suspend fun focusOutIn() {}
-            override suspend fun reset() { resets++;preedit=0 }
+            override suspend fun reset() {
+                resets++
+                if(preedit>0) emit(FcitxEvent.ClientPreeditEvent(FormattedText.Empty))
+                preedit=0
+            }
             override suspend fun sendKey(sym:KeySym,states:KeyStates,code:Int,up:Boolean,timestamp:Int) {
                 if(up) return
                 if(sym.sym==FcitxKeyMapping.FcitxKey_BackSpace) {
@@ -179,6 +183,25 @@ class InputTargetTest {
         assertEquals("second",second.text.toString())
         h.engine.emit(FcitxEvent.CommitStringEvent(FcitxEvent.CommitStringEvent.Data("current",-1)));h.drain()
         assertEquals("secondcurrent",second.text.toString())
+    }
+
+    @Test fun explicitPanelMacroClearsDraftWhileBackspaceKeepsItsGestureScope()=Harness().use { h ->
+        val host=h.host("abcdef");h.drain()
+        val panel=PanelEditorSession(h.service,ThemeManager.DefaultTheme)
+        panel.open(PanelEditorSession.Mode.SavedContent);h.drain()
+        val editor=(panel.root.getChildAt(0) as android.view.ViewGroup).getChildAt(0) as EditText
+        h.engine.emit(FcitxEvent.CommitStringEvent(FcitxEvent.CommitStringEvent.Data("ab",-1)))
+        h.engine.emit(FcitxEvent.ClientPreeditEvent(FormattedText(arrayOf("c"),intArrayOf(0),1)))
+        h.engine.preedit=1;h.drain()
+        assertEquals("abc",editor.text.toString())
+        panel.handleAction(KeyAction.MacroAction(listOf(
+            KeyMacros.Step("clear"),KeyMacros.Step("text","LOCAL"),KeyMacros.Step("selectAll"),
+            KeyMacros.Step("copy"),KeyMacros.Step("clear"),KeyMacros.Step("paste"),KeyMacros.Step("text","!")
+        )))
+        h.drain()
+        assertEquals("LOCAL!",editor.text.toString())
+        assertEquals("abcdef",host.text.toString())
+        panel.close();h.drain()
     }
 
     @Test fun candidateCommitReplacesCompositionBeforeClearingPreedit()=Harness().use { h ->

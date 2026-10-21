@@ -138,14 +138,10 @@ jobs:
       - name: Prepare pinned Rime and offline model data
         run: python3 scripts/prepare_personal_rime.py
       - uses: gradle/actions/setup-gradle@v6
-      - name: Check shared candidate cache and record reload comparison
+      - name: Check native candidate rules, ordering and cache
         id: candidate_cache
         continue-on-error: true
-        run: |
-          set -o pipefail
-          mkdir -p build/personal-ci
-          g++ -std=c++20 -O2 scripts/test_candidate_preferences.cpp -o build/personal-ci/candidate-cache-check
-          build/personal-ci/candidate-cache-check build/personal-ci/candidate-fixture | tee build/personal-ci/candidate-cache.txt
+        run: bash scripts/run_native_candidate_checks.sh
       - name: Enable Android emulator acceleration
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules

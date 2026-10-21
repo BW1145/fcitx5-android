@@ -171,7 +171,9 @@ class PanelEditorSession(private val service: FcitxInputMethodService, private v
     }
 
     private suspend fun FcitxAPI.macro(token: Long, steps: List<KeyMacros.Step>) {
-        val preeditOnly = backspaceStartedWithPreedit || hasPreedit()
+        // Only a Backspace gesture keeps its initial composition-only scope.
+        // An explicit macro's clear step clears the panel's own draft.
+        val preeditOnly = backspaceStartedWithPreedit
         for (step in steps) {
             if (!accepts(token)) return
             if(step.action=="privacy") {

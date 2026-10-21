@@ -68,3 +68,12 @@ python3 scripts/apply_personal_patches.py --component fcitx5-rime \
 ## 最终本地验证记录
 
 2026-10-21 22:47:40 UTC：完整 JVM 测试 45/45 通过。22:48:26 UTC：最终 Android 测试源码编译通过。本轮可复用的隔离测试命令与日志位于云端 `/workspace/shared/fcitx-test-tools/`，`run-focused-tests.sh` 保留只运行主机检查的限制；`verified-kotlin-source-sha256.txt` 记录本轮测试代码校验值。用户已同意 SDK 许可，并于 23:09 UTC 批准本轮构建及验收后发布。
+
+## 首轮安卓验收后的修正
+
+GitHub Actions `39691790123`（提交 `4686053b`）完成正式 arm64 包构建、签名与离线内容检查。完整/轻量两种 Android 15 冒烟均遇到相同的两个问题，兼容性、升级与发布步骤按门槛跳过：
+
+1. 主机候选测试未携带固定 Fcitx 的 UTF-8 头文件/实现。改为共用 `scripts/run_native_candidate_checks.sh`，显式编译真实 `cutf8.cpp`，仅在构建目录生成导出标记头，并运行候选顺序检查。缺少源码或编译失败仍使最终检查失败。
+2. 搜索框自定义宏开始时存在组合文字，交接补丁将整个宏的清空动作都限为“只清组合文字”，导致 `ab` + 组合 `c` 后执行清空/文本/复制/粘贴宏得到 `abLOCAL!`。面板现在只为实际退格手势保留组合区范围，普通宏恢复清空自己的草稿。原输入框的行为未改动。
+
+两种 Android 15 冒烟其余 32/33 项均通过；失败操作加入 `InputTargetTest`。修正后目标组 7/7、全量 JVM 46/46 通过。主机候选脚本已在固定上游源码、无 CMake 生成头、默认检出路径与含空格路径下验证通过。后续以修正提交的完整 CI 结果为准。
