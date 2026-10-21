@@ -171,6 +171,7 @@ class PersonalRimeTest {
             fun allActions(actions:Array<org.fcitx.fcitx5.android.core.Action>):List<org.fcitx.fcitx5.android.core.Action> = actions.flatMap { listOf(it)+allActions(it.menu ?: emptyArray()) }
         try {
             fcitx.activateIme("rime");fcitx.reset()
+            candidates("nihao") { "你好" in it }
             val modelToggle=allActions(fcitx.statusArea()).firstOrNull { it.shortText.startsWith("模型增强") }
             assertTrue("Octagram toggle must be exposed in Rime options",modelToggle!=null)
             "biezaishuawomenwan".forEach { fcitx.sendKey(it) }
@@ -200,6 +201,7 @@ class PersonalRimeTest {
             fun allActions(actions:Array<org.fcitx.fcitx5.android.core.Action>):List<org.fcitx.fcitx5.android.core.Action> = actions.flatMap { listOf(it)+allActions(it.menu ?: emptyArray()) }
         try {
             fcitx.activateIme("rime");fcitx.reset()
+            candidates("nihao") { "你好" in it }
             "nihao".forEach { fcitx.sendKey(it) }
             val hello=fcitx.getCandidates(0,10).indexOfFirst { it.text=="你好" }
             assertTrue(hello>=0)

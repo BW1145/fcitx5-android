@@ -427,6 +427,12 @@ class PersonalContentSearchTest {
             } finally { release.countDown() }
             gate.await()
             await("Queued AI input cannot leak into the host after closing") { hostText()==original+"w" }
+            // The English engine still shows spelling candidates for the host's
+            // composing w. Commit it before looking for the idle toolbar.
+            key(R.id.button_return)
+            await("Host composition is committed before reopening AI") {
+                hostText()==original+"w" && fcitx.runImmediately { clientPreeditCached.isEmpty() && inputPanelCached.preedit.isEmpty() }
+            }
             openAi()
             await("Reopening AI restores its separate draft") { query()=="abc" }
             assertEquals(original+"w",hostText())

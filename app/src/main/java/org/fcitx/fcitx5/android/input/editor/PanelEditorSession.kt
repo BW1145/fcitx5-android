@@ -36,7 +36,7 @@ class PanelEditorSession(private val service: FcitxInputMethodService, private v
         setBackgroundColor(theme.keyBackgroundColor)
         visibility = View.GONE
     }
-    private val results = org.fcitx.fcitx5.android.input.clipboard.ContentSearchResults(service, theme) { close(it) }
+    private val results = org.fcitx.fcitx5.android.input.clipboard.ContentSearchResults(service, service.lifecycleScope, theme) { close(it) }
     enum class Mode { Clipboard, SavedContent, Ai }
     private var mode = Mode.Clipboard
     private val aiMode get() = mode == Mode.Ai
