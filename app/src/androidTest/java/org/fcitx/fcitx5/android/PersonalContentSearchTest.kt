@@ -26,10 +26,13 @@ import org.fcitx.fcitx5.android.core.FormattedText
 import org.fcitx.fcitx5.android.core.KeyStates
 import org.fcitx.fcitx5.android.core.KeySym
 import org.fcitx.fcitx5.android.daemon.FcitxDaemon
+import org.fcitx.fcitx5.android.data.WordLibrary
+import org.fcitx.fcitx5.android.data.ToolbarLayout
+import org.fcitx.fcitx5.android.data.ai.AiStore
 import org.fcitx.fcitx5.android.data.KeyMacros
 import org.fcitx.fcitx5.android.data.SavedContentStore
 import org.fcitx.fcitx5.android.data.prefs.AppPrefs
-import org.fcitx.fcitx5.android.input.clipboard.ContentSearchEditor
+import org.fcitx.fcitx5.android.input.editor.PanelEditor
 import org.fcitx.fcitx5.android.input.keyboard.NumberKeyboard
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -51,9 +54,9 @@ class PersonalContentSearchTest {
             .putExtra(PersonalInputTestActivity.EXTRA_SHOW_SOFT_INPUT, false)
         activityRule.launchActivity(intent)
         try {
-            lateinit var editor: ContentSearchEditor
+            lateinit var editor: PanelEditor
             instrumentation.runOnMainSync {
-                editor = ContentSearchEditor(activityRule.activity)
+                editor = PanelEditor(activityRule.activity)
                 activityRule.activity.setContentView(editor.view)
                 editor.view.isFocusableInTouchMode = true
                 editor.view.requestFocus()
@@ -207,6 +210,35 @@ class PersonalContentSearchTest {
         instrumentation.waitForIdleSync()
     }
 
+    private fun launchKeyboard() {
+        val info = automation.serviceInfo
+        info.flags = info.flags or AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS or
+            AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS or AccessibilityServiceInfo.FLAG_INCLUDE_NOT_IMPORTANT_VIEWS
+        automation.serviceInfo = info
+        val ime = "${context.packageName}/org.fcitx.fcitx5.android.input.FcitxInputMethodService"
+        shell("settings put secure show_ime_with_hard_keyboard 1")
+        shell("ime enable $ime")
+        shell("ime set $ime")
+        activityRule.launchActivity(null)
+        // A show request in Activity.onCreate can precede the served-view
+        // connection. Request it after the host window actually gains focus.
+        await("The host editor has window focus") {
+            var focused = false
+            instrumentation.runOnMainSync {
+                focused = activityRule.activity.editor.hasWindowFocus()
+            }
+            focused
+        }
+        instrumentation.runOnMainSync {
+            val editor = activityRule.activity.editor
+            editor.requestFocus()
+            val manager = context.getSystemService(Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
+            manager.restartInput(editor)
+            manager.showSoftInput(editor, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
+        }
+        await("Keyboard is visible") { imeNodes().any { it.viewIdResourceName?.endsWith(":id/button_space") == true } }
+    }
+
     @Test
     fun searchActionsStayInTheirEditorAcrossResetAndClose() = runBlocking {
         val previousMacros = KeyMacros.load()
@@ -227,32 +259,7 @@ class PersonalContentSearchTest {
                         KeyMacros.Step("paste"), KeyMacros.Step("text", "!")))))
                 layout.setValue(NumberKeyboard.Name)
             }
-            val info = automation.serviceInfo
-            info.flags = info.flags or AccessibilityServiceInfo.FLAG_RETRIEVE_INTERACTIVE_WINDOWS or
-                AccessibilityServiceInfo.FLAG_REPORT_VIEW_IDS or AccessibilityServiceInfo.FLAG_INCLUDE_NOT_IMPORTANT_VIEWS
-            automation.serviceInfo = info
-            val ime = "${context.packageName}/org.fcitx.fcitx5.android.input.FcitxInputMethodService"
-            shell("settings put secure show_ime_with_hard_keyboard 1")
-            shell("ime enable $ime")
-            shell("ime set $ime")
-            activityRule.launchActivity(null)
-            // A show request in Activity.onCreate can precede the served-view
-            // connection. Request it after the host window actually gains focus.
-            await("The host editor has window focus") {
-                var focused = false
-                instrumentation.runOnMainSync {
-                    focused = activityRule.activity.editor.hasWindowFocus()
-                }
-                focused
-            }
-            instrumentation.runOnMainSync {
-                val editor = activityRule.activity.editor
-                editor.requestFocus()
-                val manager = context.getSystemService(Context.INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager
-                manager.restartInput(editor)
-                manager.showSoftInput(editor, android.view.inputmethod.InputMethodManager.SHOW_IMPLICIT)
-            }
-            await("Keyboard is visible") { imeNodes().any { it.viewIdResourceName?.endsWith(":id/button_space") == true } }
+            launchKeyboard()
             fcitx.runOnReady { reset(); activateIme("keyboard-us") }
             await("English engine is active") { fcitx.runImmediately { inputMethodEntryCached.uniqueName == "keyboard-us" } }
             val original = "abcdef"
@@ -376,6 +383,87 @@ class PersonalContentSearchTest {
             }
             SavedContentStore.delete(entry.id)
             FcitxDaemon.disconnect(javaClass.name)
+        }
+    }
+
+    @Test fun aiEditorKeepsInputLocalAcrossCancel()=runBlocking {
+        val previousToolbar=ToolbarLayout.main()
+        val previousIds=AiStore.all().map { it.id }.toSet()
+        val release=CountDownLatch(1)
+        val fcitx=FcitxDaemon.connect("ai-editor-test")
+        try {
+            instrumentation.runOnMainSync { ToolbarLayout.save(ToolbarLayout.defaults) }
+            launchKeyboard()
+            fcitx.runOnReady { reset();activateIme("keyboard-us") }
+            val original="original draft"
+            instrumentation.runOnMainSync {
+                activityRule.activity.editor.setText(original)
+                activityRule.activity.editor.setSelection(original.length)
+            }
+            fun openAi() {
+                val label=context.getString(R.string.ai_assistant)
+                if(imeNodes().none { it.contentDescription?.toString()==label }) {
+                    val expand=context.getString(R.string.expand_toolbar)
+                    await("Toolbar expand control is visible") { imeNodes().any { it.contentDescription?.toString()==expand } }
+                    tap(imeNodes().first { it.contentDescription?.toString()==expand })
+                }
+                await("AI entry is visible") { imeNodes().any { it.contentDescription?.toString()==label } }
+                tap(imeNodes().first { it.contentDescription?.toString()==label })
+                await("AI draft has finished loading") { imeNodes().any { it.text?.toString()=="发送" && it.isEnabled } }
+            }
+            openAi()
+            type("abc");key(R.id.button_return)
+            await("AI input is committed locally") { query()=="abc" && fcitx.runImmediately { clientPreeditCached.isEmpty() } }
+            assertEquals(original,hostText())
+            val entered=CountDownLatch(1)
+            val gate=async(Dispatchers.Default) {
+                fcitx.runOnReady { enqueueInputBarrier { entered.countDown();assertTrue(release.await(30,TimeUnit.SECONDS)) } }
+            }
+            assertTrue(entered.await(10,TimeUnit.SECONDS))
+            try {
+                type("def")
+                tap(imeNodes().first { it.text?.toString()==context.getString(android.R.string.cancel) })
+                type("w")
+            } finally { release.countDown() }
+            gate.await()
+            await("Queued AI input cannot leak into the host after closing") { hostText()==original+"w" }
+            openAi()
+            await("Reopening AI restores its separate draft") { query()=="abc" }
+            assertEquals(original+"w",hostText())
+            tap(imeNodes().first { it.text?.toString()==context.getString(android.R.string.cancel) })
+            type("v")
+            await("Host input remains usable after AI closes") { hostText()==original+"wv" }
+        } finally {
+            release.countDown();activityRule.finishActivity()
+            instrumentation.runOnMainSync { ToolbarLayout.save(previousToolbar) }
+            AiStore.read { AiStore.all().filterNot { it.id in previousIds }.forEach { AiStore.delete(it) } }
+            FcitxDaemon.disconnect("ai-editor-test")
+        }
+    }
+
+    @Test fun editingRulesRefreshesTheActiveComposition()=runBlocking {
+        val previous=WordLibrary.rules()
+        val fcitx=FcitxDaemon.connect("rule-refresh-test")
+        try {
+            launchKeyboard()
+            fcitx.runOnReady { reset();activateIme("rime") }
+            type("nihao")
+            await("The active composition has candidates",180_000) { fcitx.runImmediately { getCandidates(0,1).isNotEmpty() } }
+            val victim=fcitx.runOnReady { getCandidates(0,1).first().text }
+            val pending=fcitx.runOnReady { inputPanelCached.preedit.toString() }
+            WordLibrary.saveRules(previous.filterNot { it.engine=="rime" && it.reading=="nihao" && it.text==victim }+
+                WordLibrary.Rule("rime","nihao",victim,"hide"))
+            await("A preference edit refreshes candidates without another key or reset") {
+                fcitx.runImmediately { getCandidates(0,16).none { it.text==victim } }
+            }
+            assertEquals(pending,fcitx.runOnReady { inputPanelCached.preedit.toString() })
+            WordLibrary.saveRules(previous)
+            await("Restoring preferences refreshes the same composition") {
+                fcitx.runImmediately { getCandidates(0,1).firstOrNull()?.text==victim }
+            }
+            assertEquals(pending,fcitx.runOnReady { inputPanelCached.preedit.toString() })
+        } finally {
+            WordLibrary.saveRules(previous);activityRule.finishActivity();FcitxDaemon.disconnect("rule-refresh-test")
         }
     }
 }

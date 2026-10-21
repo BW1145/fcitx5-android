@@ -72,6 +72,9 @@ FCITX_ADDON_DECLARE_FUNCTION(AndroidFrontend, showToast,
 FCITX_ADDON_DECLARE_FUNCTION(AndroidFrontend, setCandidatePagingMode,
                              void(const int))
 
+FCITX_ADDON_DECLARE_FUNCTION(AndroidFrontend, refreshCandidatePreferences,
+                             void())
+
 FCITX_ADDON_DECLARE_FUNCTION(AndroidFrontend, offsetCandidatePage,
                              void(int))
 

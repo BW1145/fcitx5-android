@@ -12,6 +12,7 @@
 #include <fcitx/inputpanel.h>
 #include <fcitx/statusarea.h>
 #include <fcitx-utils/event.h>
+#include <fcitx-utils/standardpaths.h>
 
 #include "androidfrontend.h"
 #include "candidatepreferences.h"
@@ -94,6 +95,8 @@ public:
                 tabs
         );
     }
+
+    void reloadPreferences() { preferences_.load(true); }
 
     void updateCandidatesBulk() {
         beginPreferences(false);
@@ -358,7 +361,7 @@ private:
         return (entry && entry->uniqueName()=="rime" && action.id()==0) ||
             action.text()=="Forget word" || action.text()=="忘记词汇";
     }
-    CandidatePreferences preferences_;
+    CandidatePreferences preferences_{StandardPaths::global().userDirectory(StandardPathsType::PkgData)/"candidate-preferences.tsv"};
     std::string scope_;
     std::string lastCommitted_;
     bool prefer_=false, paged_=false, ended_=false;
@@ -627,6 +630,13 @@ void AndroidFrontend::setCandidatePagingMode(const int mode) {
     } else {
         activeIC_->updateCandidatesPaged();
     }
+}
+
+void AndroidFrontend::refreshCandidatePreferences() {
+    if(!activeIC_) return;
+    activeIC_->reloadPreferences();
+    if(pagingMode_==0) activeIC_->updateCandidatesBulk();
+    else activeIC_->updateCandidatesPaged();
 }
 
 void AndroidFrontend::updatePagedCandidate(const PagedCandidateEntity &paged) {

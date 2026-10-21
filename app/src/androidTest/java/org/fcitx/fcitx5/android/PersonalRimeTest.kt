@@ -115,13 +115,12 @@ class PersonalRimeTest {
         }
     }
 
-    @Test
-    fun freshInstallProvidesOfflinePinyinAndKeepsUserConfig() = runBlocking {
+    private class EngineFixture(val scope:kotlinx.coroutines.CoroutineScope) {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val fcitx = Fcitx(context)
 
         suspend fun start() {
-            val ready = async(start = CoroutineStart.UNDISPATCHED) {
+            val ready = scope.async(start = CoroutineStart.UNDISPATCHED) {
                 fcitx.eventFlow.filterIsInstance<FcitxEvent.ReadyEvent>().first()
             }
             fcitx.start()
@@ -144,8 +143,16 @@ class PersonalRimeTest {
             fcitx.reset()
         }
 
-        start()
-        try {
+    }
+
+    private fun withEngine(block:suspend EngineFixture.()->Unit)=runBlocking {
+        val fixture=EngineFixture(this)
+        fixture.start()
+        try { fixture.block() } finally { fixture.fcitx.stop() }
+    }
+
+    @Test
+    fun freshInstallProvidesOfflinePinyin()=withEngine {
             assertTrue(fcitx.availableIme().any { it.uniqueName == "rime" })
             assertTrue(fcitx.availableIme().any { it.uniqueName == "anthy" })
             assertEquals(listOf("keyboard-us", "rime", "anthy"), fcitx.enabledIme().map { it.uniqueName })
@@ -157,7 +164,13 @@ class PersonalRimeTest {
             candidates("shuawomenwan") { "耍我们玩" in it }
             candidates("mintian") { "明天" in it }
             candidates("ningtian") { "明天" in it }
+    }
+
+    @Test
+    fun modelToggleChangesCandidatesAndPersists()=withEngine {
             fun allActions(actions:Array<org.fcitx.fcitx5.android.core.Action>):List<org.fcitx.fcitx5.android.core.Action> = actions.flatMap { listOf(it)+allActions(it.menu ?: emptyArray()) }
+        try {
+            fcitx.activateIme("rime");fcitx.reset()
             val modelToggle=allActions(fcitx.statusArea()).firstOrNull { it.shortText.startsWith("模型增强") }
             assertTrue("Octagram toggle must be exposed in Rime options",modelToggle!=null)
             "biezaishuawomenwan".forEach { fcitx.sendKey(it) }
@@ -176,6 +189,17 @@ class PersonalRimeTest {
             assertEquals("Re-enabling the model restores enhanced sentence candidates",
                 enhancedWords, fcitx.getCandidates(0, 10).map { it.text })
             fcitx.reset()
+        } finally {
+            fcitx.reset()
+            allActions(fcitx.statusArea()).firstOrNull { it.shortText.startsWith("模型关闭") }?.let { fcitx.activateAction(it.id) }
+        }
+    }
+
+    @Test
+    fun predictionToggleAndBackspaceWorkImmediately()=withEngine {
+            fun allActions(actions:Array<org.fcitx.fcitx5.android.core.Action>):List<org.fcitx.fcitx5.android.core.Action> = actions.flatMap { listOf(it)+allActions(it.menu ?: emptyArray()) }
+        try {
+            fcitx.activateIme("rime");fcitx.reset()
             "nihao".forEach { fcitx.sendKey(it) }
             val hello=fcitx.getCandidates(0,10).indexOfFirst { it.text=="你好" }
             assertTrue(hello>=0)
@@ -197,7 +221,7 @@ class PersonalRimeTest {
             fcitx.activateAction(allActions(fcitx.statusArea()).first { it.shortText.startsWith("联想关闭") }.id)
             assertTrue("Re-enabling prediction immediately restores next-word candidates",
                 fcitx.getCandidates(0, 10).isNotEmpty())
-            val forwardedDelete = async(start = CoroutineStart.UNDISPATCHED) {
+            val forwardedDelete = scope.async(start = CoroutineStart.UNDISPATCHED) {
                 withTimeout(5_000) {
                     fcitx.eventFlow.filterIsInstance<FcitxEvent.KeyEvent>().first {
                         it.data.sym.sym == FcitxKeyMapping.FcitxKey_BackSpace
@@ -210,6 +234,15 @@ class PersonalRimeTest {
                 fcitx.getCandidates(0, 10).isEmpty())
             fcitx.reset()
 
+        } finally {
+            fcitx.reset()
+            allActions(fcitx.statusArea()).firstOrNull { it.shortText.startsWith("联想关闭") }?.let { fcitx.activateAction(it.id) }
+        }
+    }
+
+    @Test
+    fun preeditEditingAndPagingWork()=withEngine {
+            fcitx.activateIme("rime");fcitx.reset()
             candidates("rq") { words -> words.any { it.matches(Regex("\\d{4}-\\d{2}-\\d{2}")) } }
 
             "niho".forEach { fcitx.sendKey(it) }
@@ -230,6 +263,11 @@ class PersonalRimeTest {
             "shi".forEach { fcitx.sendKey(it) }
             assertTrue("More candidates must be available beyond the first row", fcitx.getCandidates(16, 16).isNotEmpty())
             fcitx.reset()
+    }
+
+    @Test
+    fun japaneseTypingAndConversionWork()=withEngine {
+            fcitx.activateIme("rime");fcitx.reset()
             fcitx.activateIme("anthy")
             "nihongo".forEach {
                 fcitx.sendKey(it)
@@ -242,7 +280,7 @@ class PersonalRimeTest {
             val japaneseCandidates = fcitx.getCandidates(0, 20).map { it.text }
             val japaneseIndex = japaneseCandidates.indexOf("日本語")
             assertTrue("Expected Japanese candidates: $japaneseCandidates", japaneseIndex >= 0)
-            val japaneseCommit = async(start = CoroutineStart.UNDISPATCHED) {
+            val japaneseCommit = scope.async(start = CoroutineStart.UNDISPATCHED) {
                 fcitx.eventFlow.filterIsInstance<FcitxEvent.CommitStringEvent>().first()
             }
             assertTrue(fcitx.select(japaneseIndex))
@@ -251,6 +289,11 @@ class PersonalRimeTest {
             fcitx.reset()
             fcitx.activateIme("rime")
 
+    }
+
+    @Test
+    fun upgradePreservesUserConfig()=withEngine {
+            fcitx.activateIme("rime");fcitx.reset()
             val patch = (context.getExternalFilesDir(null) ?: context.filesDir)
                 .resolve("data/rime/default.custom.yaml")
             val personalized = patch.readText() + "\n# personal configuration\n"
@@ -274,9 +317,6 @@ class PersonalRimeTest {
             assertEquals("1", fcitx.getAddonConfig("anthy")["cfg"]["General"]["NTriggersToShowCandWin"].value)
             assertEquals(personalized, patch.readText())
             candidates("nihao") { "你好" in it }
-        } finally {
-            fcitx.stop()
-        }
     }
 
     @Test

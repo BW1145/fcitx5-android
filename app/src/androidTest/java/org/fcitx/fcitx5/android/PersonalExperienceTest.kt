@@ -41,33 +41,60 @@ class PersonalExperienceTest {
             assertEquals("All four styles have distinct rendered geometry and materials",4,hashes.size)
         }
     }
-    @Test fun wordSnapshotsAndCandidateActionsPreserveSelection()=runBlocking {
+    private fun withWordFixture(block:suspend (org.fcitx.fcitx5.android.daemon.FcitxConnection)->Unit)=runBlocking {
         val connection=FcitxDaemon.connect("experience-test")
+        val previous=WordLibrary.snapshots().map { it.id }.toSet()
         var baseline:WordLibrary.Snapshot?=null
-        val created=mutableListOf<WordLibrary.Snapshot>()
         try {
-            connection.runOnReady { activate(android.os.Process.myUid(),context.packageName);focus();activateIme("rime");reset()
-                "nihao".forEach { sendKey(it) };delay(200);select(0);reset() }
-            baseline=WordLibrary.snapshot(connection,"测试前状态").also { created+=it }
+            connection.runOnReady {
+                activate(android.os.Process.myUid(),context.packageName);focus();activateIme("rime");reset()
+                "nihao".forEach { sendKey(it) };delay(200);select(0);reset()
+            }
+            baseline=WordLibrary.snapshot(connection,"测试前状态")
             WordLibrary.add(connection,"rime_ice","验收词甲","yan shou ci jia",1000)
+            block(connection)
+        } finally {
+            connection.runOnReady { reset();activateIme("rime") }
+            baseline?.let { WordLibrary.restore(connection,it,false) }
+            WordLibrary.snapshots().filterNot { it.id in previous }.forEach { WordLibrary.delete(it) }
+            FcitxDaemon.disconnect("experience-test")
+        }
+    }
+
+    @Test fun wordSnapshotsRestoreMergeAndRoundTrip()=withWordFixture { connection ->
             assertTrue(WordLibrary.words(connection).any { it.text=="验收词甲" })
-            val first=WordLibrary.snapshot(connection,"词条甲").also { created+=it }
+            val first=WordLibrary.snapshot(connection,"词条甲")
             WordLibrary.add(connection,"rime_ice","验收词乙","yan shou ci yi",1000)
-            val second=WordLibrary.snapshot(connection,"词条乙").also { created+=it }
+            WordLibrary.setRule(WordLibrary.Word("rime_ice","验收词甲","yan shou ci jia","1000"),"hide")
+            val second=WordLibrary.snapshot(connection,"词条乙")
             WordLibrary.restore(connection,first,false)
             assertFalse(WordLibrary.words(connection).any { it.text=="验收词乙" })
+            connection.runOnReady {
+                reset();"yanshoucijia".forEach { sendKey(it) };delay(200)
+                assertTrue("Restore immediately restores the candidate",getCandidates(0,64).any { it.text=="验收词甲" })
+            }
             WordLibrary.restore(connection,second,true)
             assertTrue(WordLibrary.words(connection).any { it.text=="验收词乙" })
-            val zipped=ByteArrayOutputStream().also { WordLibrary.export(first,it) }.toByteArray()
-            val imported=WordLibrary.import(ByteArrayInputStream(zipped)).also { created+=it }
-            assertEquals(first.count,imported.count)
             connection.runOnReady {
+                reset();"yanshoucijia".forEach { sendKey(it) };delay(200)
+                assertFalse("Merge immediately applies restored candidate preferences",getCandidates(0,64).any { it.text=="验收词甲" })
+            }
+            val zipped=ByteArrayOutputStream().also { WordLibrary.export(first,it) }.toByteArray()
+            val imported=WordLibrary.import(ByteArrayInputStream(zipped))
+            assertEquals(first.count,imported.count)
+    }
+
+    @Test fun chineseCandidateActionsPreserveSelection()=withWordFixture { connection ->
+        connection.runOnReady {
                 reset();"yanshoucijia".forEach { sendKey(it) };delay(200)
                 val original=getCandidates(0,64)
                 val index=original.indexOfFirst { it.text=="验收词甲" };assertTrue(index>=0)
                 assertTrue(getCandidateActions(index).any { it.id == -1002 })
-                triggerCandidateAction(index,-1002);delay(200)
+                val pending=inputPanelCached.preedit.toString()
+                WordLibrary.setRule(WordLibrary.Word("rime_ice","验收词甲","yan shou ci jia","1000"),"lower")
+                refreshCandidatePreferences()
                 val lowered=getCandidates(0,64)
+                assertEquals("Editing preferences does not reset the active composition",pending,inputPanelCached.preedit.toString())
                 assertTrue(lowered.indexOfFirst { it.text=="验收词甲" }>0)
                 val expected=lowered.first().text
                 data class Selection(val commits:List<String>,val preedit:String,val clientPreedit:String)
@@ -103,6 +130,11 @@ class PersonalExperienceTest {
                 triggerCandidateAction(victim,-1001);delay(200)
                 assertFalse(getCandidates(0,64).any { it.text=="验收词甲" })
                 reset()
+        }
+    }
+
+    @Test fun japanesePriorityPreservesConversion()=withWordFixture { connection ->
+        connection.runOnReady {
                 activateIme("anthy")
                 "nihongo".forEach { sendKey(it);sendKey(it,up=true) };delay(200)
                 assertTrue("Japanese candidates appear while typing",getCandidates(0,64).isNotEmpty())
@@ -117,14 +149,9 @@ class PersonalExperienceTest {
                 sendKey(' ');sendKey(' ',up=true);delay(200)
                 assertTrue("Japanese space keeps its conversion candidates visible",getCandidates(0,64).isNotEmpty())
                 assertNotEquals(word,getCandidates(0,64).first().text)
-                reset();activateIme("rime")
-            }
-        } finally {
-            baseline?.let { WordLibrary.restore(connection,it,false) }
-            created.forEach { WordLibrary.delete(it) }
-            FcitxDaemon.disconnect("experience-test")
         }
     }
+
     @Test fun privateAiDraftsStayOutOfSavedHistory() {
         val previous=PrivacyMode.enabled
         try {

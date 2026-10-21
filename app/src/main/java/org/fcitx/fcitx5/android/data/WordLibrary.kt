@@ -5,6 +5,9 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
+import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
 import org.fcitx.fcitx5.android.daemon.FcitxConnection
@@ -13,6 +16,9 @@ import java.io.*
 import java.util.zip.*
 
 object WordLibrary {
+    private val changes=MutableSharedFlow<Unit>(extraBufferCapacity=1,onBufferOverflow=BufferOverflow.DROP_OLDEST)
+    val ruleChanges=changes.asSharedFlow()
+    fun notifyRulesChanged() { changes.tryEmit(Unit) }
     private val access=Mutex()
     data class Word(val dictionary:String,val text:String,val reading:String,val weight:String)
     data class Rule(val engine:String,val reading:String,val text:String,val mode:String) {
@@ -28,7 +34,10 @@ object WordLibrary {
         val parts=it.split('\t')
         if(parts.size!=4) null else Rule(unhex(parts[0]),unhex(parts[1]),unhex(parts[2]),parts[3])
     }.orEmpty()
-    fun saveRules(items:List<Rule>)=ExperienceData.write(rulesFile,items.joinToString("\n") { it.line }.let { if(it.isEmpty()) it else "$it\n" })
+    fun saveRules(items:List<Rule>) {
+        ExperienceData.write(rulesFile,items.joinToString("\n") { it.line }.let { if(it.isEmpty()) it else "$it\n" })
+        notifyRulesChanged()
+    }
     fun setRule(word:Word,mode:String) {
         val reading=word.reading.replace(" ","").replace("'","").lowercase()
         val rule=Rule("rime",reading,word.text,mode)
@@ -94,6 +103,7 @@ object WordLibrary {
                 }
             }
         } catch(e:Exception) { operation(connection,"restore/${rollback.id}");throw e }
+        finally { notifyRulesChanged() }
         }
     }
     fun delete(snapshot:Snapshot) { history.resolve(snapshot.id).deleteRecursively() }

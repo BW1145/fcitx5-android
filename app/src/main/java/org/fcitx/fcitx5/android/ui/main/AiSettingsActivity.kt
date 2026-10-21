@@ -10,6 +10,7 @@ import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import org.fcitx.fcitx5.android.data.ai.*
 
 class AiSettingsActivity : ExperienceActivity() {
@@ -51,22 +52,51 @@ class AiSettingsActivity : ExperienceActivity() {
         panel.addView(label("会话记录 · 保存在本机，可搜索、继续对话和删除"))
         val search=field("搜索会话");panel.addView(search)
         val history=column();panel.addView(history)
-        fun render() {
-            history.removeAllViews();val q=search.text.toString()
-            AiStore.all().filter { (it.title+it.messages.joinToString { m->m.text }).contains(q,true) }.forEach { conversation ->
-                history.addView(button("${conversation.title} · ${conversation.messages.size} 条") {
-                    AlertDialog.Builder(this).setTitle(conversation.title).setItems(arrayOf("查看记录","下次打开键盘时继续此对话","删除")) { _,i->when(i) {
-                        0 -> AlertDialog.Builder(this).setTitle(conversation.title).setView(ScrollView(this).apply {
+        var historyJob:Job?=null
+        var generation=0
+        var offset=0
+        var hasMore=true
+        lateinit var render:(Boolean)->Unit
+        fun show(summary:AiStore.Summary) {
+            lifecycleScope.launch {
+                val conversation=AiStore.read { AiStore.get(summary.id) } ?: return@launch
+                AlertDialog.Builder(this@AiSettingsActivity).setTitle(conversation.title)
+                    .setItems(arrayOf("查看记录","下次打开键盘时继续此对话","删除")) { _,i->when(i) {
+                        0 -> AlertDialog.Builder(this@AiSettingsActivity).setTitle(conversation.title).setView(ScrollView(this@AiSettingsActivity).apply {
                             addView(label(conversation.messages.joinToString("\n\n") { "${if(it.role=="user") "我" else "AI"}：${it.text}" }))
                         }).setPositiveButton("关闭",null).show()
                         1 -> { AiStore.open(conversation);finish() }
-                        2 -> AlertDialog.Builder(this).setMessage("删除此对话？").setPositiveButton("删除") { _,_->AiStore.delete(conversation);render() }.setNegativeButton("取消",null).show()
+                        2 -> AlertDialog.Builder(this@AiSettingsActivity).setMessage("删除此对话？").setPositiveButton("删除") { _,_->
+                            lifecycleScope.launch { AiStore.read { AiStore.delete(conversation) };render(true) }
+                        }.setNegativeButton("取消",null).show()
                     } }.show()
-                })
             }
         }
-        search.doAfterTextChanged { render() };render()
-        setContentView(ScrollView(this).apply { addView(panel) })
+        render={ reset ->
+            if(reset) {
+                historyJob?.cancel();generation++;offset=0;hasMore=true;history.removeAllViews()
+            }
+            val token=generation
+            val query=search.text.toString()
+            historyJob=lifecycleScope.launch {
+                if(reset) delay(200)
+                try {
+                    val entries=AiStore.page(query,offset)
+                    if(token!=generation) return@launch
+                    entries.forEach { summary -> history.addView(button("${summary.title} · ${summary.count} 条") { show(summary) }) }
+                    offset+=entries.size;hasMore=entries.size==20
+                    if(offset==0) history.addView(label("没有找到会话"))
+                } catch(e:CancellationException) { throw e }
+                catch(e:Exception) { state.text=e.message ?: "读取会话失败" }
+            }
+        }
+        search.doAfterTextChanged { render(true) };render(true)
+        setContentView(ScrollView(this).apply {
+            addView(panel)
+            setOnScrollChangeListener { _:android.view.View, _:Int, y:Int, _:Int, _:Int ->
+                if(hasMore && historyJob?.isActive!=true && y+height>=panel.height-200) render(false)
+            }
+        })
     }
     private fun commands() {
         val config=AiStore.config();val items=config.commands

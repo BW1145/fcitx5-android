@@ -1,142 +1,62 @@
-"""Prepare pinned Rime sources and offline data for the personal APK."""
+"""Prepare pinned sources, generated adaptations and verified offline data."""
 import hashlib
 import io
 import json
-import tarfile
 import shutil
+import tarfile
 import urllib.request
 from pathlib import Path
+from apply_personal_patches import apply
 
 ROOT = Path(__file__).resolve().parents[1]
 WORK = ROOT / "build/personal-rime"
-LOCK = json.loads((ROOT / "scripts/personal-rime-dependencies.json").read_text())
+LOCK = json.loads((ROOT / "scripts/personal-rime-dependencies.json").read_text(encoding="utf-8"))
 
-def download(url, digest):
+
+def verified_file(path, url, digest):
+    if path.exists():
+        cached = path.read_bytes()
+        if hashlib.sha256(cached).hexdigest() == digest:
+            return cached
     data = urllib.request.urlopen(url, timeout=120).read()
-    actual = hashlib.sha256(data).hexdigest()
-    if actual != digest:
-        raise ValueError(f"Checksum mismatch for {url}: {actual}")
+    if hashlib.sha256(data).hexdigest() != digest:
+        raise ValueError(f"Checksum mismatch for {url}")
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(data)
     return data
 
-def replace(path, old, new):
-    text = path.read_text(encoding="utf-8")
-    if old not in text:
-        raise ValueError(f"Source changed: {path.name}")
-    path.write_text(text.replace(old, new), encoding="utf-8", newline="\n")
 
-def patch_anthy_bridge(source):
-    replace(source / "engine.h", '#include "action.h"',
-            '#include "action.h"\n#include "personal-anthy-public.h"')
-    replace(source / "engine.h", '    auto state(fcitx::InputContext *ic)',
-            '    void personalSelectPreview(fcitx::InputContext *ic, const std::string &text);\n'
-            '    FCITX_ADDON_EXPORT_FUNCTION(AnthyEngine, personalSelectPreview);\n'
-            '    auto state(fcitx::InputContext *ic)')
-    replace(source / "state.h", '    void selectCandidate(unsigned int item);',
-            '''    void selectCandidate(unsigned int item);
-    void selectPreferredPreview(const std::string &text) {
-        if (!preedit_.isConverting()) action_convert();
-        auto candidates = preedit_.candidates();
-        for (int i = 0; candidates && i < candidates->totalSize(); ++i) {
-            if (candidates->candidateFromAll(i).text().toString() == text) {
-                selectCandidateNoDirect(i);
-                updateUI();
-                return;
-            }
-        }
-    }''')
-    with (source / "engine.cpp").open("a", encoding="utf-8", newline="\n") as output:
-        output.write('''
-void AnthyEngine::personalSelectPreview(fcitx::InputContext *ic, const std::string &text) {
-    state(ic)->selectPreferredPreview(text);
-}
-''')
-
-def patch_sources():
-    patch_anthy_bridge(ROOT / "plugin/anthy/src/main/cpp/fcitx5-anthy/src")
+def prepare():
+    WORK.mkdir(parents=True, exist_ok=True)
+    for entry in LOCK["sources"]:
+        name = entry["repo"].split("/")[-1]
+        source = WORK / "sources" / entry["sha256"] / name
+        if not source.exists():
+            data = verified_file(WORK / "downloads" / f'{entry["sha256"]}.tar.gz',
+                f'https://codeload.github.com/{entry["repo"]}/tar.gz/{entry["ref"]}', entry["sha256"])
+            parent = source.parent
+            parent.mkdir(parents=True, exist_ok=True)
+            with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as archive:
+                folder = archive.getmembers()[0].name.split("/")[0]
+                archive.extractall(parent, filter="data")
+            (parent / folder).rename(source)
+        apply(name, source, WORK / name)
     rime = WORK / "librime"
-    # Android uses the existing static Lua build.
-    lua = WORK / "librime-lua/CMakeLists.txt"
-    text = lua.read_text()
-    start = text.index("  find_package(PkgConfig)")
-    end = text.index("\nelse()", start)
-    lua.write_text(text[:start] + "  find_package(Lua REQUIRED CONFIG)\n  set(LUA_TARGET ${LUA_LIBRARY})\n  include_directories(${LUA_INCLUDE_DIR})" + text[end:])
-    # Retain upstream Android option persistence for menu toggles.
-    replace(rime / "src/rime/engine.cc", "  an<Switcher> switcher_;", "")
-    replace(rime / "src/rime/engine.h", "class Context;", "class Context;\nclass Switcher;")
-    replace(rime / "src/rime/engine.h", "  RIME_DLL static Engine* Create();", "  RIME_DLL static Engine* Create();\n  an<Switcher> switcher_;")
-    replace(rime / "src/rime/service.h", "  the<Engine> engine_;", "")
-    replace(rime / "src/rime/service.h", " private:\n  void OnCommit", "  the<Engine> engine_;\n\n private:\n  void OnCommit")
-    replace(rime / "src/rime_api_impl.h", "#include <rime/switches.h>", "#include <rime/switches.h>\n#include <rime/engine.h>\n#include <rime/switcher.h>")
-    replace(rime / "src/rime_api_impl.h", "  ctx->set_option(option, !!value);", """  ctx->set_option(option, !!value);
-  // Rebuild zero-input predictions immediately when their option changes.
-  if (std::string(option) == "prediction" && ctx->input().empty()) {
-    ctx->Clear();
-  }
-  auto switcher = session->engine_->switcher_;
-  if (switcher && switcher->IsAutoSave(option)) {
-    if (Config* user_config = switcher->user_config()) {
-      user_config->SetBool("var/option/" + std::string(option), value);
-    }
-  }""")
-    # Keep the chosen enhancement state across focus changes and app restarts.
-    replace(rime / "src/rime/engine.cc", "    if (option.reset_value >= 0) {", """    if (option.option_name == "octagram" || option.option_name == "prediction") {
-      bool saved_value = false;
-      if (switcher_ && switcher_->user_config() &&
-          switcher_->user_config()->GetBool("var/option/" + option.option_name, &saved_value)) {
-        context_->set_option(option.option_name, saved_value);
-        return Switches::kContinue;
-      }
-    }
-    if (option.reset_value >= 0) {""")
-    # One menu option selects a model-backed or ordinary sentence composer.
-    header = rime / "src/rime/gear/script_translator.h"
-    replace(header, "  the<Poet> poet_;", "  the<Poet> poet_;\n  the<Poet> plain_poet_;")
-    translator = rime / "src/rime/gear/script_translator.cc"
-    replace(translator, "    poet_.reset(new Poet(language(), config));", "    poet_.reset(new Poet(language(), config));\n    plain_poet_.reset(new Poet(language(), nullptr));")
-    replace(translator, "  auto result = New<ScriptTranslation>(", "  auto* active_poet = engine_->context()->get_option(\"octagram\") ? poet_.get() : plain_poet_.get();\n  auto result = New<ScriptTranslation>(")
-    replace(translator, "this, corrector_.get(), poet_.get(), input", "this, corrector_.get(), active_poet, input")
-    replace(translator, "return poet_->ContextualWeighted", "return active_poet->ContextualWeighted")
-    replace(rime / "src/rime/gear/poet.cc",
-            "inline static Grammar* create_grammar(Config* config) {",
-            "inline static Grammar* create_grammar(Config* config) {\n  if (!config) return nullptr;")
-    # Publish recomputed candidates after a menu action, just as after a key event.
-    replace(ROOT / "plugin/rime/src/main/cpp/fcitx5-rime/src/rimeaction.cpp",
-            "    api->set_option(session, option_.c_str(), !oldValue);",
-            "    api->set_option(session, option_.c_str(), !oldValue);\n    state->updateUI(ic);")
-    predictor = WORK / "librime-predict/src/predictor.cc"
-    # Suggestions follow committed text; an empty editor starts with its toolbar.
-    replace(predictor, '    PredictAndUpdate(ctx, "$");\n', "")
-    # Dismissing predictions also lets the same Backspace reach the editor.
-    replace(predictor, "      ctx->Clear();\n      return kAccepted;",
-            "      ctx->Clear();\n      return keycode == XK_BackSpace ? kNoop : kAccepted;")
-    predict = WORK / "librime-predict/src/predict_engine.cc"
-    replace(predict, '#include "predict_db.h"', '#include "predict_db.h"\n#include <opencc/Config.hpp>\n#include <opencc/Converter.hpp>')
-    replace(predict, "  if (const auto* candidates = db_->Lookup(context_query)) {", """  const auto* candidates = db_->Lookup(context_query);
-  if (!candidates) {
-    static auto traditional = opencc::Config().NewFromFile(
-        (Service::instance().deployer().shared_data_dir / "opencc" / "s2t.json").u8string());
-    candidates = db_->Lookup(traditional->Convert(context_query));
-  }
-  if (candidates) {""")
     for name in ("lua", "octagram", "predict"):
+        source = WORK / ("librime-" + name)
         target = rime / "plugins" / name
-        shutil.copytree(WORK / ("librime-" + name), target)
+        marker = ".personal-patches.json"
+        if not (target / marker).exists() or (target / marker).read_bytes() != (source / marker).read_bytes():
+            if target.exists():
+                shutil.rmtree(target)
+            shutil.copytree(source, target)
+    data_dir = ROOT / "app/src/main/assets/personal-defaults/data/rime"
+    for entry in LOCK["data"]:
+        verified_file(data_dir / entry["name"], entry["url"], entry["sha256"])
+    schema = (ROOT / "third_party/rime-ice/rime_ice.schema.yaml").read_text(encoding="utf-8")
+    (data_dir / "rime_ice.schema.yaml").write_text(schema +
+        "\n__patch:\n  - personal_ice:/patch\n  - rime_ice.custom:/patch?\n", encoding="utf-8")
+
 
 if __name__ == "__main__":
-    WORK.mkdir(parents=True, exist_ok=True)
-    for source in LOCK["sources"]:
-        directory = WORK / source["repo"].split("/")[-1]
-        if directory.exists():
-            raise RuntimeError("Run from a clean build directory")
-        data = download(f'https://codeload.github.com/{source["repo"]}/tar.gz/{source["ref"]}', source["sha256"])
-        with tarfile.open(fileobj=io.BytesIO(data), mode="r:gz") as archive:
-            name = archive.getmembers()[0].name.split("/")[0]
-            archive.extractall(WORK, filter="data")
-        (WORK / name).rename(directory)
-    patch_sources()
-    data_dir = ROOT / "app/src/main/assets/personal-defaults/data/rime"
-    for item in LOCK["data"]:
-        (data_dir / item["name"]).write_bytes(download(item["url"], item["sha256"]))
-    # Overlay defaults on the pinned schema before installing it into the APK.
-    schema = (ROOT / "third_party/rime-ice/rime_ice.schema.yaml").read_text(encoding="utf-8")
-    (data_dir / "rime_ice.schema.yaml").write_text(schema + "\n__patch:\n  - personal_ice:/patch\n  - rime_ice.custom:/patch?\n", encoding="utf-8")
+    prepare()

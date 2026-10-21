@@ -171,7 +171,7 @@
 
 **实现依据**：现有主题以颜色与背景为主，圆角、边距等部分参数属于全局设置。实现时补充主题相关的键面、边框、装饰和按下状态绘制，让一次选择完整应用对应风格。优先采用缓存图形、渐变与小尺寸纹理，玻璃效果使用本地材质绘制。
 
-已完成[艺术主题概念对照稿](assets/theme-art-directions-v1.png)，使用内置图片生成工具；[生成提示词](assets/theme-art-directions-v1.prompt.txt)随图稿保存。已查看四套布局、文字、材质与装饰表现，四组字母均按 QWERTY 排列。概念稿呈现四种视觉方向，实际交互在开发阶段实现；实机细化关注孔版颗粒的密度及玻璃高光与文字的对比。
+已完成[艺术主题概念对照稿](archive/theme-art-directions-v1.png)，使用内置图片生成工具；[生成提示词](archive/theme-art-directions-v1.prompt.txt)随图稿保存。已查看四套布局、文字、材质与装饰表现，四组字母均按 QWERTY 排列。概念稿呈现四种视觉方向，实际交互在开发阶段实现；实机细化关注孔版颗粒的密度及玻璃高光与文字的对比。
 
 视觉依据：[穆夏基金会《黄道十二宫》](https://muchafoundation.org/en/gallery/browse-works/object_type/decorative-designs/object/242)、[MoMA 构成主义作品介绍](https://mobile-api.moma.org/explore/inside_out/2014/01/30/new-in-the-galleries-the-russian-avant-garde/)、[微软视觉元素指南](https://learn.microsoft.com/en-us/windows/win32/uxguide/visuals)。具体键盘构图、图案与配色为本项目的原创设计方案。
 

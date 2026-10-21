@@ -48,6 +48,7 @@ public:
     void deleteSurrounding(int before, int after);
     void showToast(const std::string &s);
     void setCandidatePagingMode(int mode);
+    void refreshCandidatePreferences();
     void offsetCandidatePage(int delta);
     void triggerCandidateListTabAction(int id);
     void setCandidateListCallback(const CandidateListCallback &callback);
@@ -79,6 +80,7 @@ private:
     FCITX_ADDON_EXPORT_FUNCTION(AndroidFrontend, triggerTabAction);
     FCITX_ADDON_EXPORT_FUNCTION(AndroidFrontend, showToast);
     FCITX_ADDON_EXPORT_FUNCTION(AndroidFrontend, setCandidatePagingMode);
+    FCITX_ADDON_EXPORT_FUNCTION(AndroidFrontend, refreshCandidatePreferences);
     FCITX_ADDON_EXPORT_FUNCTION(AndroidFrontend, offsetCandidatePage);
     FCITX_ADDON_EXPORT_FUNCTION(AndroidFrontend, triggerCandidateListTabAction);
     FCITX_ADDON_EXPORT_FUNCTION(AndroidFrontend, setCandidateListCallback);

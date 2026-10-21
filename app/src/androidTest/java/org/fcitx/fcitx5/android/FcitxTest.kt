@@ -25,6 +25,11 @@ import org.junit.BeforeClass
 import org.junit.Test
 import timber.log.Timber
 
+/**
+ * Upstream engine regression group (requires the full pinyin/table assets).
+ * Run explicitly with -e class org.fcitx.fcitx5.android.FcitxTest on a full package.
+ * Custom full/lite regression selections are maintained in scripts/run_personal_smoke.sh.
+ */
 class FcitxTest {
 
     private companion object {

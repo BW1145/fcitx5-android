@@ -71,7 +71,7 @@ import org.fcitx.fcitx5.android.data.theme.ThemeManager
 import org.fcitx.fcitx5.android.input.cursor.CursorRange
 import org.fcitx.fcitx5.android.input.cursor.CursorTracker
 import org.fcitx.fcitx5.android.input.editing.BulkDeletion
-import org.fcitx.fcitx5.android.input.clipboard.ContentSearchPanel
+import org.fcitx.fcitx5.android.input.editor.PanelEditorSession
 import org.fcitx.fcitx5.android.input.keyboard.KeyAction
 import org.fcitx.fcitx5.android.utils.InputMethodUtil
 import org.fcitx.fcitx5.android.utils.alpha
@@ -108,9 +108,9 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     private val inputEventListener: (FcitxEvent<*>) -> Unit = {
         if (isEditorEvent(it)) inputEvents.trySend(InputDispatch.Event(it))
     }
-    private var contentSearchTarget: ContentSearchPanel? = null
-    private var contentSearchConnection: InputConnection? = null
-    private var contentSearchEditorSession = 0L
+    private var panelEditorTarget: PanelEditorSession? = null
+    private var panelEditorConnection: InputConnection? = null
+    private var panelEditorAppSession = 0L
     private var editorSession = 0L
     @Volatile var inputActionToken = 0L
         private set
@@ -135,12 +135,12 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     }
 
     fun selectCandidate(index: Int) {
-        if (contentSearchTarget?.active == false) return
+        if (panelEditorTarget?.active == false) return
         postInputJob { select(index) }
     }
 
     fun movePreeditCursor(position: Int) {
-        if (contentSearchTarget?.active == false) return
+        if (panelEditorTarget?.active == false) return
         postInputJob { moveCursor(position) }
     }
 
@@ -209,7 +209,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     }
 
     val currentInputSelection: CursorRange
-        get() = contentSearchTarget?.takeIf { it.active }?.selection ?: selection.latest
+        get() = panelEditorTarget?.takeIf { it.active }?.selection ?: selection.latest
 
     private val composing = CursorRange()
     private var composingText = FormattedText.Empty
@@ -311,6 +311,11 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
                 if (!isEditorEvent(it)) handleFcitxEvent(it)
             }
         }
+        lifecycleScope.launch {
+            org.fcitx.fcitx5.android.data.WordLibrary.ruleChanges.collect {
+                postFcitxJob { refreshCandidatePreferences() }
+            }
+        }
         pkgNameCache = PackageNameCache(this)
         recreateInputViewPrefs.forEach {
             it.registerOnChangeListener(recreateInputViewListener)
@@ -328,38 +333,38 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         lastKnownConfig = resources.configuration
     }
 
-    fun closeContentSearch() { contentSearchTarget?.close() }
-    fun openContentSearch(saved: Boolean) { inputView?.contentSearch?.open(saved) }
-    fun openAiAssistant() { inputView?.contentSearch?.open(false,assistant=true) }
+    fun closeContentSearch() { panelEditorTarget?.close() }
+    fun openContentSearch(saved: Boolean) { inputView?.panelEditor?.open(if(saved) PanelEditorSession.Mode.SavedContent else PanelEditorSession.Mode.Clipboard) }
+    fun openAiAssistant() { inputView?.panelEditor?.open(PanelEditorSession.Mode.Ai) }
 
-    fun beginContentSearch(panel: ContentSearchPanel, session: Long) {
-        val previous = contentSearchTarget
+    fun beginPanelEditing(panel: PanelEditorSession, session: Long) {
+        val previous = panelEditorTarget
         if (previous != null && previous !== panel) previous.close()
         if (previous == null) finishComposing()
         inputActionToken++
-        contentSearchTarget = panel
-        contentSearchConnection = currentInputConnection
-        contentSearchEditorSession = editorSession
+        panelEditorTarget = panel
+        panelEditorConnection = currentInputConnection
+        panelEditorAppSession = editorSession
         postFcitxJob {
             reset()
             awaitInputEvents(this)
             withContext(Dispatchers.Main) {
-                if (contentSearchTarget === panel) panel.ready(session)
+                if (panelEditorTarget === panel) panel.ready(session)
             }
         }
     }
 
-    fun endContentSearch(panel: ContentSearchPanel, session: Long, result: String?, replaceDraft: Boolean = false) {
+    fun endPanelEditing(panel: PanelEditorSession, session: Long, result: String?, replaceDraft: Boolean = false) {
         inputActionToken++
-        val originalConnection = contentSearchConnection
-        val originalEditor = contentSearchEditorSession
+        val originalConnection = panelEditorConnection
+        val originalEditor = panelEditorAppSession
         postFcitxJob {
             reset()
             awaitInputEvents(this)
             withContext(Dispatchers.Main) {
-                if (contentSearchTarget === panel && panel.closed(session)) {
-                    contentSearchTarget = null
-                    contentSearchConnection = null
+                if (panelEditorTarget === panel && panel.closed(session)) {
+                    panelEditorTarget = null
+                    panelEditorConnection = null
                     if (result != null && editorSession == originalEditor &&
                         currentInputConnection === originalConnection) {
                         if(replaceDraft && originalConnection?.performContextMenuAction(android.R.id.selectAll)!=true) return@withContext
@@ -371,10 +376,10 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     }
 
     fun handleSearchAction(action: KeyAction): Boolean =
-        contentSearchTarget?.takeIf { it.active }?.handleAction(action) == true
+        panelEditorTarget?.takeIf { it.active }?.handleAction(action) == true
 
     private fun handleFcitxEvent(event: FcitxEvent<*>) {
-        if (contentSearchTarget?.handle(event) == true) return
+        if (panelEditorTarget?.handle(event) == true) return
         when (event) {
             is FcitxEvent.CommitStringEvent -> {
                 commitText(event.data.text, event.data.cursor)
@@ -567,7 +572,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     }
 
     fun commitText(text: String, cursor: Int = -1) {
-        contentSearchTarget?.let {
+        panelEditorTarget?.let {
             if (it.active) it.commitLiteral(text, cursor)
             else {
                 // A new app-directed action after Cancel follows the closing barrier.
@@ -645,7 +650,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     }
 
     fun deleteSelection() {
-        contentSearchTarget?.takeIf { it.active }?.let { it.deleteSelection(); return }
+        panelEditorTarget?.takeIf { it.active }?.let { it.deleteSelection(); return }
         val lastSelection = selection.latest
         if (lastSelection.isEmpty()) return
         selection.predict(lastSelection.start)
@@ -658,7 +663,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         ctrl: Boolean = false,
         shift: Boolean = false
     ) {
-        contentSearchTarget?.takeIf { it.active }?.let {
+        panelEditorTarget?.takeIf { it.active }?.let {
             it.combinationKey(keyEventCode, alt, ctrl, shift)
             return
         }
@@ -690,7 +695,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     }
 
     fun cancelSelection() {
-        contentSearchTarget?.takeIf { it.active }?.let { it.cancelSelection(); return }
+        panelEditorTarget?.takeIf { it.active }?.let { it.cancelSelection(); return }
         val lastSelection = selection.latest
         if (lastSelection.isEmpty()) return
         val end = lastSelection.end
@@ -771,7 +776,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
                 visibleTopInsets = inputViewLocation[1]
                 touchableInsets = Insets.TOUCHABLE_INSETS_REGION
                 touchableRegion.set(0, inputViewLocation[1], decorView.width, decorView.height)
-                inputView?.contentSearch?.root?.takeIf { it.visibility == View.VISIBLE }?.let { panel ->
+                inputView?.panelEditor?.root?.takeIf { it.visibility == View.VISIBLE }?.let { panel ->
                     panel.getLocationInWindow(inputViewLocation)
                     touchableRegion.union(android.graphics.Rect(inputViewLocation[0],inputViewLocation[1],inputViewLocation[0]+panel.width,inputViewLocation[1]+panel.height))
                 }
@@ -973,7 +978,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         // onUpdateSelection can left behind when user types quickly enough, eg. long press backspace
         cursorUpdateIndex += 1
         Timber.d("onUpdateSelection: old=[$oldSelStart,$oldSelEnd] new=[$newSelStart,$newSelEnd] cand=[$candidatesStart,$candidatesEnd]")
-        if (contentSearchTarget != null) {
+        if (panelEditorTarget != null) {
             // The host editor may move while the search engine is composing locally.
             // Update its saved cursor without moving/resetting the search composition.
             selection.resetTo(newSelStart, newSelEnd)

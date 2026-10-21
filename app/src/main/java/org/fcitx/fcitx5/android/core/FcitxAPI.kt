@@ -121,6 +121,7 @@ interface FcitxAPI {
     suspend fun triggerCandidateAction(idx: Int, actionIdx: Int)
 
     suspend fun setCandidatePagingMode(mode: Int)
+    suspend fun refreshCandidatePreferences()
     suspend fun offsetCandidatePage(delta: Int)
 
     suspend fun triggerCandidateListTabAction(id: Int)

@@ -2,7 +2,7 @@
 
 工作方式：wish-to-work
 更新日期：2026-10-21
-当前阶段：实现完成与构建交付
+当前阶段：1.3.2 维护与性能优化
 
 ## 目的地
 
@@ -47,12 +47,12 @@
 
 ## 下一步
 
-`1.3.1` 由用户 fork 的 `personal-ice` 构建与发布。流程让独立任务继续收集结果，保留构建日志、单元测试 XML 与模拟器报告，统一检查成功后发布。下一轮继续检查轻量版、Android 6 兼容与覆盖切换；执行记录见 [PLAN.md](PLAN.md)。
+按[维护与性能计划](MAINTENANCE.md)接续候选规则缓存、AI 后台存储、共用编辑器、上游补丁及回归整理。基线 `5fd75bb` 的 full/lite、Android 6 与覆盖切换检查和 `1.3.1` 发布均已通过。
 
 ## 材料
 
 - [成果说明与决定](SPEC.md)
-- [艺术主题概念对照稿](assets/theme-art-directions-v1.png)
+- [艺术主题概念对照稿](archive/theme-art-directions-v1.png)
 - 实际视图：[新艺术](assets/theme-nouveau.png)、[构成主义](assets/theme-constructivism.png)、[孔版印刷](assets/theme-risograph.png)、[Frutiger Aero](assets/theme-aero.png)
 - 反馈对照（从左到右为普通、按下、长按、手势）：[新艺术](assets/feedback-nouveau.png)、[构成主义](assets/feedback-constructivism.png)、[孔版印刷](assets/feedback-risograph.png)、[水光](assets/feedback-aero.png)
 - [现有定制版功能](../../PERSONAL.md)

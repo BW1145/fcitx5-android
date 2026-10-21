@@ -6,11 +6,16 @@ import android.security.keystore.KeyProperties
 import android.util.Base64
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.encodeToString
+import kotlinx.serialization.EncodeDefault
+import kotlinx.serialization.ExperimentalSerializationApi
 import org.fcitx.fcitx5.android.data.ExperienceData
 import org.fcitx.fcitx5.android.data.PrivacyMode
 import org.fcitx.fcitx5.android.utils.appContext
 import java.security.KeyStore
 import java.util.UUID
+import java.util.concurrent.Callable
+import java.util.concurrent.Executors
+import kotlinx.coroutines.*
 import javax.crypto.Cipher
 import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
@@ -23,31 +28,84 @@ object AiStore {
         val commands:List<Command> = listOf(Command("翻译成日语","翻译成自然日语，只输出译文。"),
             Command("缩短表达","保持原意，把这段话写得更简洁。"),Command("修改错字","只修改错别字和明显的标点错误。")))
     @Serializable data class Message(val role:String,val text:String)
+    @OptIn(ExperimentalSerializationApi::class)
     @Serializable data class Conversation(val id:String=UUID.randomUUID().toString(),val title:String="新对话",
-        val updated:Long=System.currentTimeMillis(),val messages:List<Message> = emptyList(),val draft:String="",
+        @EncodeDefault val updated:Long=System.currentTimeMillis(),val messages:List<Message> = emptyList(),val draft:String="",
         val temporary:Boolean=false)
     private val root get()=ExperienceData.root.resolve("ai")
     private val configFile get()=root.resolve("settings.json")
-    private val history get()=root.resolve("conversations")
+    @Serializable data class Summary(val id:String,val title:String,val updated:Long,val count:Int)
+    private var historyDirectory:java.io.File?=null
+    private var storage:AiHistory?=null
+    @get:Synchronized
+    private val history:AiHistory get() {
+        val directory=root.resolve("conversations")
+        if(historyDirectory!=directory) {
+            val changed=historyDirectory!=null
+            storage?.close()
+            storage=AiHistory(directory,appContext.cacheDir.resolve("ai-history-index.json"))
+            historyDirectory=directory
+            if(changed) { activeId=null;temporary=null }
+        }
+        return storage!!
+    }
+    private var worker:Thread?=null
+    private val executor=Executors.newSingleThreadExecutor { task ->
+        Thread(task,"ai-storage").apply { isDaemon=true;worker=this }
+    }
+    private val dispatcher=executor.asCoroutineDispatcher()
+    private val scope=CoroutineScope(SupervisorJob()+dispatcher)
     private var temporary:Conversation?=null
     private var activeId:String?=null
+    @Volatile var version=0
+        private set
     fun config()=ExperienceData.read(configFile)?.let { ExperienceData.json.decodeFromString<Config>(it) } ?: Config()
     fun configure(value:Config)=ExperienceData.write(configFile,ExperienceData.json.encodeToString(value))
-    fun all():List<Conversation> = history.listFiles()?.filter { it.extension=="json" }?.map {
-        ExperienceData.json.decodeFromString<Conversation>(it.readText(Charsets.UTF_8))
-    }?.sortedByDescending { it.updated }.orEmpty()
-    fun current():Conversation {
+    @Synchronized fun all():List<Conversation> = history.all()
+    @Synchronized fun get(id:String):Conversation?=history.get(id)
+    @Synchronized fun current():Conversation {
         if(PrivacyMode.enabled) return temporary ?: Conversation(temporary=true).also { temporary=it }
-        return all().find { it.id==activeId } ?: all().firstOrNull() ?: Conversation()
+        return activeId?.let { history.get(it) } ?: history.summaries().firstOrNull()?.let { history.get(it.id) }
+            ?.also { activeId=it.id } ?: Conversation()
     }
-    fun open(value:Conversation) { if(value.temporary) temporary=value else activeId=value.id }
-    fun save(value:Conversation,activate:Boolean=true) {
-        if(value.temporary) { if(PrivacyMode.enabled) temporary=value;return }
-        if(!activate && !history.resolve("${value.id}.json").exists()) return
-        ExperienceData.write(history.resolve("${value.id}.json"),ExperienceData.json.encodeToString(value));if(activate) activeId=value.id
+    @Synchronized fun open(value:Conversation) { if(value.temporary) temporary=value else activeId=value.id }
+    @Synchronized fun save(value:Conversation,activate:Boolean=true) {
+        if(value.temporary) { if(PrivacyMode.enabled && temporary?.id==value.id) temporary=value;return }
+        history.save(value,requireExisting=!activate)
+        if(activate) activeId=value.id
     }
-    fun delete(value:Conversation) { history.resolve("${value.id}.json").delete();if(activeId==value.id) activeId=null }
-    fun discardTemporary() { temporary=null }
+    @Synchronized fun delete(value:Conversation) { history.delete(value.id);if(activeId==value.id) activeId=null }
+    @Synchronized fun discardTemporary() { temporary=null }
+    @Synchronized fun invalidate() { version++;history.invalidate();activeId=null;temporary=null }
+    @Synchronized fun saveDraft(value:Conversation,expectedVersion:Int=version) {
+        if(expectedVersion!=version) return
+        if(value.temporary && temporary?.id!=value.id) return
+        val saved=if(value.temporary) temporary else history.get(value.id)
+        save((saved ?: value).copy(draft=value.draft))
+    }
+    @Synchronized fun complete(request:Conversation,reply:String,draft:String?,expectedVersion:Int=version):Conversation? {
+        if(expectedVersion!=version) return null
+        val saved=if(request.temporary) temporary?.takeIf { it.id==request.id && PrivacyMode.enabled }
+            else history.get(request.id)
+        saved ?: return null
+        val finished=saved.copy(messages=if(reply.isNotBlank()) request.messages+Message("assistant",reply) else request.messages,
+            updated=System.currentTimeMillis(),draft=draft ?: saved.draft)
+        save(finished,activate=false)
+        return finished
+    }
+
+    suspend fun <T> read(block:()->T):T=withContext(dispatcher) { block() }
+    fun write(block:()->Unit):Job {
+        val expected=version
+        return scope.launch { if(expected==version) block() }
+    }
+    suspend fun page(query:String="",offset:Int=0,limit:Int=20)=withContext(dispatcher) {
+        history.page(query,offset,limit)
+    }
+
+    /** Wait for queued drafts, and keep export/import ordered with subsequent writes. */
+    fun <T> withStableData(block:()->T):T = if(Thread.currentThread()===worker) block()
+        else executor.submit(Callable { block() }).get()
 }
 
 /** The exported settings retain encrypted bytes; another device asks for its own API key. */

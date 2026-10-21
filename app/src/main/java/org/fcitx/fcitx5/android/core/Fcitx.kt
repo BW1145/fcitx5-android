@@ -86,6 +86,7 @@ class Fcitx(private val context: Context) : FcitxAPI, FcitxLifecycleOwner {
 
     override suspend fun save() = withFcitxContext { saveFcitxState() }
     override suspend fun reloadConfig() = withFcitxContext { reloadFcitxConfig() }
+    override suspend fun refreshCandidatePreferences() = withFcitxContext { refreshFcitxCandidatePreferences() }
 
     override suspend fun sendKey(
         key: String,
@@ -404,6 +405,8 @@ class Fcitx(private val context: Context) : FcitxAPI, FcitxLifecycleOwner {
 
         @JvmStatic
         external fun setFcitxCandidatePagingMode(mode: Int)
+        @JvmStatic
+        external fun refreshFcitxCandidatePreferences()
 
         @JvmStatic
         external fun offsetFcitxCandidatePage(delta: Int)

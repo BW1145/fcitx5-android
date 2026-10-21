@@ -98,11 +98,12 @@ install(DIRECTORY "${PREBUILT_DIR}/opencc/data/" DESTINATION "${FCITX_INSTALL_DA
 # Bundle the Rime addon in the main APK using the upstream plugin build.
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../../../plugin/rime/src/main/cpp"
                  "${CMAKE_CURRENT_BINARY_DIR}/bundled-rime")
-include(personal-rime-ui.cmake)
+include(personal-patches.cmake)
+personal_patch_target(rime fcitx5-rime)
 
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../../../plugin/anthy/src/main/cpp"
                  "${CMAKE_CURRENT_BINARY_DIR}/bundled-anthy")
-include(anthy-typing-candidates.cmake)
+personal_patch_target(anthy fcitx5-anthy)
 
 # Install the pinned offline schema and dictionaries after Rime's base data.
 set(RIME_ICE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/../../../../third_party/rime-ice")

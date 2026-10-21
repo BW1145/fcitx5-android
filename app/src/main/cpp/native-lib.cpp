@@ -422,6 +422,10 @@ public:
         return actions;
     }
 
+    void refreshCandidatePreferences() {
+        p_frontend->call<fcitx::IAndroidFrontend::refreshCandidatePreferences>();
+    }
+
     void triggerCandidateAction(int idx, int actionIdx) {
         return p_frontend->call<fcitx::IAndroidFrontend::triggerCandidateAction>(idx, actionIdx);
     }
@@ -1071,6 +1075,13 @@ Java_org_fcitx_fcitx5_android_core_Fcitx_getFcitxCandidates(JNIEnv *env, jclass 
         env->SetObjectArrayElement(array, i, obj);
     }
     return array;
+}
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_org_fcitx_fcitx5_android_core_Fcitx_refreshFcitxCandidatePreferences(JNIEnv *env, jclass clazz) {
+    RETURN_IF_NOT_RUNNING
+    Fcitx::Instance().refreshCandidatePreferences();
 }
 
 extern "C"

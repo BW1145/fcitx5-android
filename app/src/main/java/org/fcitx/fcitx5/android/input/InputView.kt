@@ -74,7 +74,7 @@ class InputView(
     theme: Theme
 ) : BaseInputView(service, fcitx, theme) {
 
-    val contentSearch = org.fcitx.fcitx5.android.input.clipboard.ContentSearchPanel(service,theme)
+    val panelEditor = org.fcitx.fcitx5.android.input.editor.PanelEditorSession(service,theme)
     val privacyIndicator = android.widget.TextView(service).apply {
         text="隐私模式 · 点击退出";textSize=12f;gravity=android.view.Gravity.CENTER
         setTextColor(theme.candidateTextColor)
@@ -286,7 +286,7 @@ class InputView(
             bottomOfParent()
         })
         add(privacyIndicator, lParams(matchParent, wrapContent) { above(preedit.ui.root); centerHorizontally() })
-        add(contentSearch.root, lParams(matchParent, wrapContent) { above(privacyIndicator); centerHorizontally() })
+        add(panelEditor.root, lParams(matchParent, wrapContent) { above(privacyIndicator); centerHorizontally() })
         add(popup.root, lParams(matchParent, matchParent) {
             centerVertically()
             centerHorizontally()
@@ -399,7 +399,7 @@ class InputView(
     }
 
     override fun onDetachedFromWindow() {
-        contentSearch.close()
+        panelEditor.close()
         advancedPrefs.unregisterOnChangeListener(onKeyboardSizeChangeListener)
         keyboardPrefs.unregisterOnChangeListener(onKeyboardSizeChangeListener)
         // clear DynamicScope, implies that InputView should not be attached again after detached.

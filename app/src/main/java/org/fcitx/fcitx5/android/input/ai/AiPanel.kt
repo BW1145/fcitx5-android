@@ -24,7 +24,11 @@ internal class AiPanel(
     private val client=AiClient()
     private var job:Job?=null
     private var generation=0
-    private var conversation=AiStore.current()
+    private var conversation=AiStore.Conversation()
+    private var config=AiStore.Config()
+    private var loading:Job?=null
+    private var ready=false
+    private var storageVersion=0
     private var expanded=false
     private var originalDraft=""
     private var selected=""
@@ -55,7 +59,6 @@ internal class AiPanel(
     }
     fun open() {
         generation++
-        conversation=AiStore.current()
         val password=service.currentInputEditorInfo?.let {
             org.fcitx.fcitx5.android.core.CapabilityFlags.fromEditorInfo(it).has(org.fcitx.fcitx5.android.core.CapabilityFlag.Password)
         }==true
@@ -65,18 +68,52 @@ internal class AiPanel(
                 ?: (connection.getTextBeforeCursor(6000,0)?.toString().orEmpty()+selected+
                     connection.getTextAfterCursor(6000,0)?.toString().orEmpty())
         }.orEmpty()
-        input.hint="向 AI 提问";input.setText(conversation.draft);input.setSelection(input.length())
-        render()
+        input.hint="向 AI 提问"
+        load()
     }
-    fun rememberDraft() { conversation=conversation.copy(draft=input.text.toString());AiStore.save(conversation) }
-    fun close() { rememberDraft();stop();generation++ }
+    private fun load(id:String?=null,fresh:AiStore.Conversation?=null) {
+        loading?.cancel()
+        val token=++generation
+        input.setText("")
+        ready=false;input.isEnabled=false;render();state.text="正在读取对话…"
+        loading=service.lifecycleScope.launch {
+            try {
+                job?.join()
+                val loaded=AiStore.read {
+                    val value=fresh ?: if(id==null) AiStore.current() else AiStore.get(id) ?: AiStore.Conversation()
+                    Triple(value,AiStore.config(),AiStore.version)
+                }
+                if(token!=generation) return@launch
+                if(loaded.third!=AiStore.version) { load(id,fresh);return@launch }
+                conversation=loaded.first;config=loaded.second;storageVersion=loaded.third
+                AiStore.open(conversation)
+                // Keep anything typed while storage was loading, including composing spans.
+                input.text.insert(0,conversation.draft)
+                input.setSelection(input.length())
+                ready=true;input.isEnabled=true;render()
+            } catch(e:CancellationException) { throw e }
+            catch(e:Exception) { if(token==generation) state.text=e.message ?: "读取失败" }
+        }
+    }
+    fun rememberDraft() {
+        if(!ready || storageVersion!=AiStore.version) return
+        conversation=conversation.copy(draft=input.text.toString())
+        val draft=conversation
+        val version=storageVersion
+        AiStore.write { AiStore.saveDraft(draft,version) }
+    }
+    fun close() { rememberDraft();stop();loading?.cancel();ready=false;generation++ }
     fun send() {
-        if(job?.isActive==true) return
+        if(!ready || job?.isCompleted==false) return
+        if(storageVersion!=AiStore.version) { stop();load();return }
         val question=input.text.toString().trim();if(question.isEmpty()) return
         conversation=conversation.copy(messages=conversation.messages+AiStore.Message("user",question),
             title=if(conversation.messages.isEmpty()) question.take(28) else conversation.title,
             draft="",updated=System.currentTimeMillis())
-        input.setText("");AiStore.save(conversation)
+        input.setText("")
+        val pending=conversation
+        val requestVersion=storageVersion
+        AiStore.write { if(requestVersion==AiStore.version) AiStore.save(pending) }
         val before=conversation.messages
         val request=conversation
         val token=++generation
@@ -84,21 +121,29 @@ internal class AiPanel(
         job=service.lifecycleScope.launch {
             var reply=""
             try {
-                client.generate(AiStore.config(),AiCredentials.get(),before) { partial ->
-                    reply=partial
-                    withContext(Dispatchers.Main) { messages.text=display(before+AiStore.Message("assistant",partial));scroll.fullScroll(View.FOCUS_DOWN) }
+                val credentials=AiStore.read {
+                    check(requestVersion==AiStore.version) { "会话数据已更新，请重新打开 AI" }
+                    AiStore.config() to AiCredentials.get()
                 }
-                state.text="回复完成"
-            } catch(_:CancellationException) { state.text="已停止" }
-            catch(e:Exception) { state.text=e.message ?: "请求失败" }
+                client.generate(credentials.first,credentials.second,before) { partial ->
+                    reply=partial
+                    withContext(Dispatchers.Main) { if(generation==token && requestVersion==AiStore.version) {
+                        messages.text=display(before+AiStore.Message("assistant",partial));scroll.fullScroll(View.FOCUS_DOWN)
+                    } }
+                }
+                if(generation==token) state.text="回复完成"
+            } catch(_:CancellationException) { if(generation==token) state.text="已停止" }
+            catch(e:Exception) { if(generation==token) state.text=e.message ?: "请求失败" }
             finally {
                 val current=generation==token && conversation.id==request.id
-                val savedDraft=if(current) input.text.toString() else
-                    AiStore.all().find { it.id==request.id }?.draft ?: request.draft
-                val finished=request.copy(messages=if(reply.isNotBlank()) before+AiStore.Message("assistant",reply) else before,
-                    updated=System.currentTimeMillis(),draft=savedDraft)
-                if(current || !request.temporary) AiStore.save(finished,activate=current)
-                if(current) { conversation=finished;send.isEnabled=true;renderMessages();renderActions() }
+                val draft=if(current) input.text.toString() else null
+                withContext(NonCancellable) {
+                    val finished=AiStore.read { AiStore.complete(request,reply,draft,requestVersion) }
+                    if(generation==token) {
+                        send.isEnabled=ready
+                        if(finished!=null) { conversation=finished;renderMessages();renderActions() }
+                    }
+                }
             }
         }
     }
@@ -120,7 +165,7 @@ internal class AiPanel(
         }).forEach { (name,action) -> actions.addView(button(name,action),LinearLayout.LayoutParams(0,dp(36),1f)) }
     }
     private fun render() {
-        send.isEnabled=job?.isActive!=true
+        send.isEnabled=ready && job?.isCompleted!=false
         state.text=if(PrivacyMode.enabled) "输入给 AI · 隐私临时对话" else "输入给 AI · 本机会话"
         expand.text=if(expanded) "收起" else "展开"
         scroll.layoutParams=LinearLayout.LayoutParams(-1,dp(if(expanded) 230 else 82))
@@ -133,14 +178,24 @@ internal class AiPanel(
             item("拿当前草稿提问") { setQuestion(originalDraft) }
             item("拿选中文字提问") { setQuestion(selected) }
             item("拿剪贴板内容提问") { setQuestion(service.clipboardManager.primaryClip?.getItemAt(0)?.coerceToText(service)?.toString().orEmpty()) }
-            AiStore.config().commands.forEach { command -> item(command.name) {
+            config.commands.forEach { command -> item(command.name) {
                 val text=input.text.toString().ifBlank { selected.ifBlank { originalDraft } }
                 setQuestion("${command.prompt}\n\n$text")
             } }
-            item("新对话") { close();conversation=AiStore.Conversation(temporary=PrivacyMode.enabled);AiStore.open(conversation);input.setText("");render() }
-            if(!PrivacyMode.enabled) AiStore.all().take(20).forEach { previous -> item("继续：${previous.title}") {
-                close();conversation=previous;AiStore.open(previous);input.setText(previous.draft);render()
-            } }
+            item("新对话") {
+                close();load(fresh=AiStore.Conversation(temporary=PrivacyMode.enabled))
+            }
+            if(!PrivacyMode.enabled) {
+                val popup=this
+                val token=generation
+                service.lifecycleScope.launch {
+                    val previous=AiStore.page()
+                    if(token!=generation) return@launch
+                    previous.forEach { summary ->
+                        popup.menu.add("继续：${summary.title}").setOnMenuItemClickListener { close();load(summary.id);true }
+                    }
+                }
+            }
             item("接口、提示词与全部记录") { rememberDraft();service.startActivity(Intent(service,AiSettingsActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) }
             show()
         }

@@ -108,3 +108,5 @@ app/src/main/assets/personal-defaults/data/rime/*.gram
 app/src/main/assets/personal-defaults/data/rime/predict.db
 app/src/main/assets/personal-defaults/data/rime/rime_ice.schema.yaml
 scripts/__pycache__/
+
+__pycache__/
