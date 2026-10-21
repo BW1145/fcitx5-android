@@ -37,7 +37,7 @@
 
 GitHub Actions 的 Personal Custom APK 工作流依次准备固定源码与离线数据、编译 Rime、编译签名安装包，并在 Android 15 模拟器上执行输入和插件验证，再复用测试安装包执行 Android 6 的兼容回归。构建与两种系统的检查均成功后发布到本仓库。
 
-发布版本名为 `1.3.<工作流运行编号>`，实际 APK 的 `versionCode` 为 `3000 + 工作流运行编号`，所有 ABI 输出使用同一发布版本号。手动构建可以用 `-PbuildVersionName` 和 `-PbuildVersionCode` 指定版本。
+当前发布版本名为 `1.3.1`，随功能发布递增；实际 APK 的 `versionCode` 为 `3000 + 工作流运行编号`，每次构建递增。所有 ABI 输出使用同一发布版本号。手动构建可以用 `-PbuildVersionName` 和 `-PbuildVersionCode` 指定版本。
 
 主程序与外部插件共用 `mainApplicationId` 构建属性，默认为 `org.fcitx.fcitx5.android.bw1145`；调试主程序使用 `.debug` 后缀。插件的发现入口、服务权限和主程序跳转均由该属性生成。定制版应安装本仓库构建的配套插件。
 

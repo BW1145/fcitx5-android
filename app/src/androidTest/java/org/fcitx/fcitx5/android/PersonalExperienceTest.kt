@@ -73,18 +73,23 @@ class PersonalExperienceTest {
                 data class Selection(val commits:List<String>,val preedit:String,val clientPreedit:String)
                 suspend fun selectFirst(space:Boolean):Selection {
                     val commits=java.util.concurrent.CopyOnWriteArrayList<String>()
+                    val updatedPreedit=CompletableDeferred<String>()
                     val listener:(FcitxEvent<*>)->Unit = { event ->
                         if(event is FcitxEvent.CommitStringEvent) commits+=event.data.text
+                        if(event is FcitxEvent.InputPanelEvent) updatedPreedit.complete(event.data.preedit.toString())
                     }
                     addInputEventListener(listener)
                     try {
                         if(space) { sendKey(' ');sendKey(' ',up=true) }
                         else assertTrue(select(0))
-                        return Selection(commits.toList(),inputPanelCached.preedit.toString(),clientPreeditCached.toString())
+                        // Candidate selection queues the panel update in the native event loop.
+                        // Its JNI return only confirms selection, not delivery of that update.
+                        val preedit=withTimeout(5000) { updatedPreedit.await() }
+                        return Selection(commits.toList(),preedit,clientPreeditCached.toString())
                     } finally { removeInputEventListener(listener) }
                 }
                 val clicked=selectFirst(false)
-                assertTrue("Selection inserts the displayed word into the composition or commits it",
+                assertTrue("Expected selection of '$expected', received $clicked",
                     clicked.commits.joinToString("").startsWith(expected) || clicked.preedit.startsWith(expected) || clicked.clientPreedit.startsWith(expected))
                 reset();"yanshoucijia".forEach { sendKey(it) };delay(200)
                 assertEquals(expected,getCandidates(0,1).first().text)
