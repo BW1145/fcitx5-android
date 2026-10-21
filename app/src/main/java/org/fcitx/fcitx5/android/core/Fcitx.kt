@@ -428,6 +428,10 @@ class Fcitx(private val context: Context) : FcitxAPI, FcitxLifecycleOwner {
         fun handleFcitxEvent(type: Int, params: Array<Any>) {
             val event = FcitxEvent.create(type, params)
             Timber.d("Handling $event")
+            publishEvent(event)
+        }
+
+        private fun publishEvent(event: FcitxEvent<*>) {
             fcitxEventHandlers.forEach { it.invoke(event) }
             eventFlow_.tryEmit(event)
         }
@@ -553,7 +557,7 @@ class Fcitx(private val context: Context) : FcitxAPI, FcitxLifecycleOwner {
                 if (im != inputMethodEntryCached) {
                     inputMethodEntryCached = im
                     // notify downstream consumers that engine subMode has changed
-                    eventFlow_.tryEmit(FcitxEvent.IMChangeEvent(im))
+                    publishEvent(FcitxEvent.IMChangeEvent(im))
                 }
             }
             is FcitxEvent.ClientPreeditEvent -> clientPreeditCached = event.data

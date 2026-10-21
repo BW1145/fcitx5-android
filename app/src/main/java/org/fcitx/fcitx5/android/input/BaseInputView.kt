@@ -6,6 +6,7 @@
 package org.fcitx.fcitx5.android.input
 
 import android.view.View
+import android.view.Choreographer
 import android.view.WindowInsets
 import android.widget.PopupMenu
 import androidx.constraintlayout.widget.ConstraintLayout
@@ -18,6 +19,7 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.suspendCancellableCoroutine
 import org.fcitx.fcitx5.android.R
 import org.fcitx.fcitx5.android.core.FcitxEvent
 import org.fcitx.fcitx5.android.daemon.FcitxConnection
@@ -31,6 +33,7 @@ import org.fcitx.fcitx5.android.utils.navbarFrameHeight
 import org.fcitx.fcitx5.android.utils.styledColorOrDefault
 import splitties.views.dsl.core.withTheme
 import kotlin.math.max
+import kotlin.coroutines.resume
 
 abstract class BaseInputView(
     val service: FcitxInputMethodService,
@@ -49,18 +52,45 @@ abstract class BaseInputView(
 
     private fun setupFcitxEventHandler() {
         eventHandlerJob = service.lifecycleScope.launch(start = CoroutineStart.UNDISPATCHED) {
-            // Host editor calls may hold Main while native input continues.
-            // Preserve the empty-preedit transition instead of dropping it when
-            // other candidate/status events fill the shared notification buffer.
-            val events = Channel<FcitxEvent<*>>(Channel.UNLIMITED)
-            val listener: (FcitxEvent<*>) -> Unit = { events.trySend(it) }
+            // Keep one latest value per UI state type and one pending wakeup.
+            // Text operations are delivered separately by the service.
+            val pending = linkedMapOf<FcitxEvent.EventType, FcitxEvent<*>>()
+            val updates = Channel<Unit>(Channel.CONFLATED)
+            val listener: (FcitxEvent<*>) -> Unit = { event ->
+                when (event) {
+                    is FcitxEvent.InputPanelEvent, is FcitxEvent.ClientPreeditEvent,
+                    is FcitxEvent.CandidateListEvent, is FcitxEvent.PagedCandidateEvent,
+                    is FcitxEvent.IMChangeEvent, is FcitxEvent.StatusAreaEvent -> {
+                        synchronized(pending) {
+                            pending.remove(event.eventType)
+                            pending[event.eventType] = event
+                        }
+                        updates.trySend(Unit)
+                    }
+                    else -> Unit
+                }
+            }
             fcitx.runImmediately { addInputEventListener(listener) }
             try {
                 onStartHandleFcitxEvent()
-                for (event in events) handleFcitxEvent(event)
+                for (ignored in updates) {
+                    if (synchronized(pending) { pending.isEmpty() }) continue
+                    suspendCancellableCoroutine<Unit> { continuation ->
+                        val clock = Choreographer.getInstance()
+                        val callback = Choreographer.FrameCallback { continuation.resume(Unit) }
+                        clock.postFrameCallback(callback)
+                        continuation.invokeOnCancellation { clock.removeFrameCallback(callback) }
+                    }
+                    val batch = synchronized(pending) {
+                        updates.tryReceive()
+                        pending.values.toList().also { pending.clear() }
+                    }
+                    batch.forEach { handleFcitxEvent(it) }
+                }
             } finally {
                 fcitx.runImmediately { removeInputEventListener(listener) }
-                events.cancel()
+                updates.cancel()
+                synchronized(pending) { pending.clear() }
             }
         }
     }
