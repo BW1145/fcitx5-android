@@ -167,6 +167,19 @@ class PersonalKeyboardUiTest {
             await("Toolbar remains expanded when returning to the original editor") {
                 imeNodes().any { it.contentDescription?.toString() == clipboardLabel }
             }
+            val menuLabel = context.getString(R.string.status_area)
+            val settingsLabel = context.getString(R.string.open_input_method_settings)
+            val backLabel = context.getString(R.string.back_to_keyboard)
+            repeat(8) {
+                tapNode(imeNodes().first { it.contentDescription?.toString() == menuLabel })
+                await("The menu opens on every repeated visit") {
+                    imeNodes().any { it.contentDescription?.toString() == settingsLabel }
+                }
+                tapNode(imeNodes().first { it.contentDescription?.toString() == backLabel })
+                await("Returning from the menu keeps the toolbar usable") {
+                    imeNodes().any { it.contentDescription?.toString() == menuLabel }
+                }
+            }
             type("niho")
             await("Pinyin bar is visible") { imeNodes().any { it.text?.toString()?.startsWith("ni ho") == true } }
             val preedit = fcitx.runOnReady { inputPanelCached.preedit }

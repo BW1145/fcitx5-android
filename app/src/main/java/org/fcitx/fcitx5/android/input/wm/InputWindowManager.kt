@@ -112,8 +112,10 @@ class InputWindowManager : UniqueViewComponent<InputWindowManager, FrameLayout>(
      * [attachWindow] includes the operation done by [addEssentialWindow].
      */
     fun attachWindow(window: InputWindow) {
-        if (window === currentWindow)
+        if (window === currentWindow) {
             Timber.d("Skip attaching $window")
+            return
+        }
         val newView = if (window is EssentialWindow) {
             // keep the view for essential windows
             essentialWindows[window.key]?.second ?: window.onCreateView()
@@ -164,4 +166,14 @@ class InputWindowManager : UniqueViewComponent<InputWindowManager, FrameLayout>(
     }
 
     fun isAttached(window: InputWindow) = currentWindow === window
+
+    fun close() {
+        val window = currentWindow ?: return
+        window.onDetached()
+        view.removeAllViews()
+        broadcaster.onWindowDetached(window)
+        if (window !is EssentialWindow) scope -= window
+        currentWindow = null
+        currentView = null
+    }
 }

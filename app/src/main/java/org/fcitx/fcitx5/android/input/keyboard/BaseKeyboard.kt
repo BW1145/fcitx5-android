@@ -52,6 +52,7 @@ abstract class BaseKeyboard(
     var keyActionListener: KeyActionListener? = null
 
     private val prefs = AppPrefs.getInstance()
+    private val macroBindings by lazy { KeyMacros.load().groupBy { it.key } }
 
     private val popupOnKeyPress by prefs.keyboard.popupOnKeyPress
     private val expandKeypressArea by prefs.keyboard.expandKeypressArea
@@ -362,7 +363,7 @@ abstract class BaseKeyboard(
                 else -> (def.appearance as? KeyDef.Appearance.Text)?.displayText?.lowercase()
             }
             if (macroKey != null) {
-                val bindings = KeyMacros.load().filter { it.key == macroKey }
+                val bindings = macroBindings[macroKey].orEmpty()
                 bindings.firstOrNull { it.trigger == "tap" }?.let { binding ->
                     setOnClickListener { onAction(KeyAction.MacroAction(binding.steps)) }
                     doubleTapEnabled = false

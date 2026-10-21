@@ -220,7 +220,7 @@ class IdleUi(
         }
         when (state) {
             State.Empty -> animator.displayedChild = 0
-            State.Toolbar -> { buttonsUi.refresh(); animator.displayedChild = 1 }
+            State.Toolbar -> animator.displayedChild = 1
             State.Clipboard -> animator.displayedChild = 2
             State.NumberRow -> {}
             State.InlineSuggestion -> animator.displayedChild = 3

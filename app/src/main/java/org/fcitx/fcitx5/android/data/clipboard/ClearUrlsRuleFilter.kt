@@ -5,8 +5,15 @@ package org.fcitx.fcitx5.android.data.clipboard
 
 import android.net.Uri
 import org.json.JSONObject
+import org.fcitx.fcitx5.android.utils.appContext
 
 class ClearUrlsRuleFilter(rawRules: String) {
+    companion object {
+        val bundled by lazy {
+            ClearUrlsRuleFilter(appContext.assets.open("clearurls-rules.json")
+                .bufferedReader(Charsets.UTF_8).use { it.readText() })
+        }
+    }
     private data class Provider(
         val urlPattern: Regex,
         val rules: List<Regex> = emptyList(),

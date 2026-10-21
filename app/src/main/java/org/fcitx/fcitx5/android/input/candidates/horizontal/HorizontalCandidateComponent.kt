@@ -16,7 +16,6 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
 import org.fcitx.fcitx5.android.R
 import org.fcitx.fcitx5.android.core.FcitxEvent
-import org.fcitx.fcitx5.android.daemon.launchOnReady
 import org.fcitx.fcitx5.android.data.prefs.AppPrefs
 import org.fcitx.fcitx5.android.input.bar.ExpandButtonStateMachine.BooleanKey.ExpandedCandidatesEmpty
 import org.fcitx.fcitx5.android.input.bar.ExpandButtonStateMachine.TransitionEvent.ExpandedCandidatesUpdated
@@ -135,6 +134,12 @@ class HorizontalCandidateComponent :
             offset.tryEmit(0)
             bar.expandButtonStateMachine.push(ExpandedCandidatesUpdated, ExpandedCandidatesEmpty to true)
         }
+    }
+
+    fun close() {
+        generation++
+        loadJob?.cancel()
+        loadJob = null
     }
 }
 

@@ -24,7 +24,7 @@ class ButtonsBarUi(override val ctx: Context, private val theme: Theme) : Ui {
 
     var onAction: ((org.fcitx.fcitx5.android.input.status.StatusAreaEntry.Android.Type) -> Unit)? = null
     val moreButton = ToolButton(ctx,R.drawable.ic_baseline_more_horiz_24,theme).apply { contentDescription=ctx.getString(R.string.status_area) }
-    fun refresh() {
+    private fun refresh() {
         root.removeAllViews()
         val size=ctx.dp(40)
         org.fcitx.fcitx5.android.data.ToolbarLayout.main().forEach { type ->

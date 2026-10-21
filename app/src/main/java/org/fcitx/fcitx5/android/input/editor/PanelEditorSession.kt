@@ -5,7 +5,6 @@ import android.view.KeyEvent
 import android.view.View
 import android.widget.Button
 import android.widget.LinearLayout
-import android.widget.ScrollView
 import androidx.core.widget.doAfterTextChanged
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
@@ -56,7 +55,7 @@ class PanelEditorSession(private val service: FcitxInputMethodService, private v
                 setOnClickListener { close() }
             })
         })
-        root.addView(ScrollView(service).apply { addView(results.root) },
+        root.addView(results.root,
             LinearLayout.LayoutParams(-1, service.dp(180)))
         editor.view.doAfterTextChanged {
             if (state == State.Open && aiMode) {
@@ -77,7 +76,7 @@ class PanelEditorSession(private val service: FcitxInputMethodService, private v
         swipeHadPreedit = false
         editor.clear()
         root.visibility = View.VISIBLE
-        results.root.parent.let { (it as? View)?.visibility = if(assistant) View.GONE else View.VISIBLE }
+        results.root.visibility = if(assistant) View.GONE else View.VISIBLE
         if(assistant) {
             if(ai.root.parent==null) root.addView(ai.root)
             ai.root.visibility=View.VISIBLE

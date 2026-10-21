@@ -2,6 +2,7 @@
 package org.fcitx.fcitx5.android
 
 import android.os.Looper
+import android.view.View
 import android.widget.TextView
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -28,6 +29,11 @@ class ContentSearchResultsTest {
         val entry=SavedContentStore.put(null,"needle-result","chosen text")
         val chosen=mutableListOf<String>()
         val results=ContentSearchResults(RuntimeEnvironment.getApplication(),scope,ThemeManager.DefaultTheme) { chosen+=it }
+        fun layout() {
+            results.root.measure(View.MeasureSpec.makeMeasureSpec(500,View.MeasureSpec.EXACTLY),
+                View.MeasureSpec.makeMeasureSpec(500,View.MeasureSpec.EXACTLY))
+            results.root.layout(0,0,500,500)
+        }
         fun awaitSearch() {
             val deadline=System.nanoTime()+5_000_000_000L
             fun pending()=scope.coroutineContext[Job]!!.children.any { it.isActive }
@@ -39,6 +45,13 @@ class ContentSearchResultsTest {
         }
         fun awaitResult(text:String) {
             awaitSearch()
+            val deadline=System.nanoTime()+5_000_000_000L
+            while(System.nanoTime()<deadline) {
+                shadowOf(Looper.getMainLooper()).idleFor(Duration.ofMillis(32))
+                layout()
+                if((results.root.getChildAt(0) as? TextView)?.text?.toString()==text) break
+                Thread.sleep(5)
+            }
             assertEquals(text,(results.root.getChildAt(0) as? TextView)?.text?.toString())
         }
         try {

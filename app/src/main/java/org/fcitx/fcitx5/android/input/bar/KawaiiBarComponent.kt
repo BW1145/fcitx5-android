@@ -96,6 +96,7 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
     private val popup: PopupComponent by manager.must()
 
     private val toolbarFcitx by manager.fcitx()
+    private val statusWindow by lazy { StatusAreaWindow() }
     private val prefs = AppPrefs.getInstance()
 
     private val clipboardSuggestion = prefs.clipboard.clipboardSuggestion
@@ -108,6 +109,8 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
     private val preferredVoiceInput by prefs.keyboard.preferredVoiceInput
 
     private var clipboardTimeoutJob: Job? = null
+    private var inlineInflationJob: Job? = null
+    private var closed = false
 
     private var isClipboardFresh: Boolean = false
     private var isInlineSuggestionPresent: Boolean = false
@@ -124,6 +127,7 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
         ClipboardManager.OnClipboardUpdateListener {
             if (!clipboardSuggestion.getValue()) return@OnClipboardUpdateListener
             service.lifecycleScope.launch {
+                if (closed) return@launch
                 if (it.text.isEmpty()) {
                     isClipboardFresh = false
                 } else {
@@ -294,7 +298,7 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
             buttonsUi.apply {
                 onAction = { type -> org.fcitx.fcitx5.android.input.status.ToolbarActions.perform(type,context,service,windowManager,toolbarFcitx) }
                 moreButton.setOnClickListener {
-                    windowManager.attachWindow(StatusAreaWindow())
+                    windowManager.attachWindow(statusWindow)
                 }
             }
             clipboardUi.suggestionView.apply {
@@ -428,6 +432,7 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
     }
 
     override fun onStartInput(info: EditorInfo, capFlags: CapabilityFlags) {
+        inlineInflationJob?.cancel()
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             idleUi.privateMode(info.imeOptions.hasFlag(EditorInfo.IME_FLAG_NO_PERSONALIZED_LEARNING))
         }
@@ -484,6 +489,7 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
 
     @RequiresApi(Build.VERSION_CODES.R)
     fun handleInlineSuggestions(response: InlineSuggestionsResponse): Boolean {
+        inlineInflationJob?.cancel()
         val suggestions = response.inlineSuggestions
         if (suggestions.isEmpty()) {
             isInlineSuggestionPresent = false
@@ -505,18 +511,14 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
                 scrollable.add(it)
             }
         }
-        service.lifecycleScope.launch {
-            idleUi.inlineSuggestionsBar.setPinnedView(
-                pinned?.let { inflateInlineContentView(it) }
-            )
-        }
-        service.lifecycleScope.launch {
-            val views = scrollable.map { s ->
-                service.lifecycleScope.async {
-                    inflateInlineContentView(s)
-                }
-            }.awaitAll()
-            idleUi.inlineSuggestionsBar.setScrollableViews(views)
+        inlineInflationJob = service.lifecycleScope.launch {
+            launch {
+                idleUi.inlineSuggestionsBar.setPinnedView(pinned?.let { inflateInlineContentView(it) })
+            }
+            launch {
+                val views = scrollable.map { s -> async { inflateInlineContentView(s) } }.awaitAll()
+                idleUi.inlineSuggestionsBar.setScrollableViews(views)
+            }
         }
         isInlineSuggestionPresent = true
         evalIdleUiState()
@@ -540,6 +542,15 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
     fun onKeyboardLayoutSwitched(isNumber: Boolean) {
         isKeyboardLayoutNumber = isNumber
         evalIdleUiState()
+    }
+
+    fun close() {
+        closed = true
+        clipboardTimeoutJob?.cancel()
+        inlineInflationJob?.cancel()
+        ClipboardManager.removeOnUpdateListener(onClipboardUpdateListener)
+        clipboardSuggestion.unregisterOnChangeListener(onClipboardSuggestionUpdateListener)
+        clipboardItemTimeout.unregisterOnChangeListener(onClipboardTimeoutUpdateListener)
     }
 
 }

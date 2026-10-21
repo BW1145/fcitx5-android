@@ -10,6 +10,7 @@ import android.widget.PopupMenu
 import androidx.core.text.buildSpannedString
 import androidx.core.text.color
 import androidx.lifecycle.lifecycleScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import org.fcitx.fcitx5.android.R
 import org.fcitx.fcitx5.android.core.Action
@@ -49,7 +50,8 @@ class StatusAreaWindow : InputWindow.ExtendedInputWindow<StatusAreaWindow>(),
 
     private val editorInfoInspector by AppPrefs.getInstance().internal.editorInfoInspector
 
-    private val staticEntries get() = org.fcitx.fcitx5.android.data.ToolbarLayout.menu().map { ToolbarActions.entry(context,it) }.toTypedArray()
+    private val staticEntries by lazy { org.fcitx.fcitx5.android.data.ToolbarLayout.menu().map { ToolbarActions.entry(context,it) }.toTypedArray() }
+    private var refreshJob: Job? = null
 
     private fun activateAction(action: Action) {
         fcitx.launchOnReady {
@@ -123,6 +125,7 @@ class StatusAreaWindow : InputWindow.ExtendedInputWindow<StatusAreaWindow>(),
             }
             layoutManager = gridLayoutManager(4)
             adapter = this@StatusAreaWindow.adapter
+            itemAnimator = null
         }
     }
 
@@ -161,15 +164,17 @@ class StatusAreaWindow : InputWindow.ExtendedInputWindow<StatusAreaWindow>(),
     override fun onCreateBarExtension() = barExtension
 
     override fun onAttached() {
-        fcitx.launchOnReady {
-            val data = it.statusArea()
-            service.lifecycleScope.launch {
-                onStatusAreaUpdate(data)
-            }
+        onStatusAreaUpdate(fcitx.runImmediately { statusAreaActionsCached })
+        refreshJob?.cancel()
+        refreshJob = service.lifecycleScope.launch {
+            val data = fcitx.runOnReady { statusArea() }
+            onStatusAreaUpdate(data)
         }
     }
 
     override fun onDetached() {
+        refreshJob?.cancel()
+        refreshJob = null
         popupMenu?.dismiss()
         popupMenu = null
     }

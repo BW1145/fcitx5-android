@@ -20,7 +20,6 @@ import androidx.core.view.updateLayoutParams
 import org.fcitx.fcitx5.android.core.CapabilityFlags
 import org.fcitx.fcitx5.android.core.FcitxEvent
 import org.fcitx.fcitx5.android.daemon.FcitxConnection
-import org.fcitx.fcitx5.android.daemon.launchOnReady
 import org.fcitx.fcitx5.android.data.prefs.AppPrefs
 import org.fcitx.fcitx5.android.data.prefs.ManagedPreferenceProvider
 import org.fcitx.fcitx5.android.data.theme.Theme
@@ -221,11 +220,6 @@ class InputView(
         // MUST call before any operation
         setupScope()
 
-        // restore punctuation mapping in case of InputView recreation
-        fcitx.launchOnReady {
-            punctuation.updatePunctuationMapping(it.statusAreaActionsCached)
-        }
-
         // make sure KeyboardWindow's view has been created before it receives any broadcast
         windowManager.addEssentialWindow(keyboardWindow, createView = true)
         windowManager.addEssentialWindow(symbolPicker)
@@ -400,6 +394,10 @@ class InputView(
 
     override fun onDetachedFromWindow() {
         panelEditor.close()
+        windowManager.close()
+        kawaiiBar.close()
+        horizontalCandidate.close()
+        punctuation.close()
         advancedPrefs.unregisterOnChangeListener(onKeyboardSizeChangeListener)
         keyboardPrefs.unregisterOnChangeListener(onKeyboardSizeChangeListener)
         // clear DynamicScope, implies that InputView should not be attached again after detached.

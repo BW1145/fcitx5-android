@@ -2,8 +2,12 @@
 package org.fcitx.fcitx5.android.input.clipboard
 
 import android.content.Context
-import android.widget.LinearLayout
+import android.view.ViewGroup
 import android.widget.TextView
+import androidx.recyclerview.widget.DiffUtil
+import androidx.recyclerview.widget.LinearLayoutManager
+import androidx.recyclerview.widget.ListAdapter
+import androidx.recyclerview.widget.RecyclerView
 import kotlinx.coroutines.*
 import org.fcitx.fcitx5.android.R
 import org.fcitx.fcitx5.android.data.SavedContentStore
@@ -19,7 +23,31 @@ internal class ContentSearchResults(
     private val theme:Theme,
     private val choose:(String)->Unit
 ) {
-    val root=LinearLayout(context).apply { orientation=LinearLayout.VERTICAL }
+    private data class Row(val label:String,val value:String?,val session:Int)
+    private class Holder(val text:TextView):RecyclerView.ViewHolder(text)
+    private val adapter=object:ListAdapter<Row,Holder>(object:DiffUtil.ItemCallback<Row>() {
+        override fun areItemsTheSame(old:Row,new:Row)=old.session==new.session && old.value==new.value
+        override fun areContentsTheSame(old:Row,new:Row)=old==new
+    }) {
+        override fun onCreateViewHolder(parent:ViewGroup,viewType:Int)=Holder(TextView(context).apply {
+            textSize=16f;setTextColor(theme.keyTextColor)
+            setPadding(context.dp(12),context.dp(12),context.dp(12),context.dp(12))
+            layoutParams=RecyclerView.LayoutParams(-1,-2)
+        })
+        override fun onBindViewHolder(holder:Holder,position:Int) {
+            val row=getItem(position)
+            holder.text.text=row.label.ifBlank { row.value.orEmpty() }
+            // Only closing the panel ends an action's editor session.
+            holder.text.setOnClickListener {
+                if(row.session==session) row.value?.let(choose)
+            }
+        }
+    }
+    val root=RecyclerView(context).apply {
+        layoutManager=LinearLayoutManager(context)
+        adapter=this@ContentSearchResults.adapter
+        itemAnimator=null
+    }
     private var job:Job?=null
     private var generation=0
     private var session=0
@@ -48,22 +76,13 @@ internal class ContentSearchResults(
             // including a refresh that finishes between touch down and touch up.
             if(items==displayed) return@launch
             displayed=items
-            root.removeAllViews()
-            if(items.isEmpty()) root.addView(TextView(context).apply {
-                setText(R.string.search_empty);setTextColor(theme.keyTextColor)
-            })
-            items.forEach { (label,value) -> root.addView(TextView(context).apply {
-                this.text=label.ifBlank { value };textSize=16f;setTextColor(theme.keyTextColor)
-                setPadding(context.dp(12),context.dp(12),context.dp(12),context.dp(12))
-                // Visible rows remain usable while a different query is loading.
-                // Only closing the panel ends their editor session.
-                setOnClickListener { if(panelSession==session) choose(value) }
-            }) }
+            adapter.submitList(if(items.isEmpty()) listOf(Row(context.getString(R.string.search_empty),null,panelSession))
+                else items.map { (label,value)->Row(label,value,panelSession) })
         }
     }
 
     fun close() {
         session++;generation++;job?.cancel();job=null;query=null;displayed=null
-        root.removeAllViews()
+        adapter.submitList(emptyList())
     }
 }

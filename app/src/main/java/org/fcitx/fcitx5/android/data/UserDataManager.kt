@@ -66,7 +66,7 @@ object UserDataManager {
                 // databases
                 writeFileTree(dataBasesDir, "databases", zipStream)
                 // external
-                writeFileTree(externalDir, "external", zipStream)
+                synchronized(SavedContentStore) { writeFileTree(externalDir, "external", zipStream) }
                 // recently_used moved to SharedPreference and shoud not be exported
                 // metadata
                 zipStream.putNextEntry(ZipEntry("metadata.json"))
@@ -105,7 +105,7 @@ object UserDataManager {
                         errorRuntime(R.string.exception_user_data_package_name_mismatch)
                     copyDir(File(tempDir, "shared_prefs"), sharedPrefsDir)
                     copyDir(File(tempDir, "databases"), dataBasesDir)
-                    copyDir(File(tempDir, "external"), externalDir)
+                    synchronized(SavedContentStore) { copyDir(File(tempDir, "external"), externalDir) }
                     // keep importing recently_used for backwords compatibility
                     copyDir(File(tempDir, "recently_used"), recentlyUsedDir)
                     AiStore.invalidate()

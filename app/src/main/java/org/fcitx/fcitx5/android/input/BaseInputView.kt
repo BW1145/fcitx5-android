@@ -6,7 +6,6 @@
 package org.fcitx.fcitx5.android.input
 
 import android.view.View
-import android.view.Choreographer
 import android.view.WindowInsets
 import android.widget.PopupMenu
 import androidx.constraintlayout.widget.ConstraintLayout
@@ -19,7 +18,6 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.suspendCancellableCoroutine
 import org.fcitx.fcitx5.android.R
 import org.fcitx.fcitx5.android.core.FcitxEvent
 import org.fcitx.fcitx5.android.daemon.FcitxConnection
@@ -29,11 +27,11 @@ import org.fcitx.fcitx5.android.data.theme.Theme
 import org.fcitx.fcitx5.android.data.theme.ThemeManager
 import org.fcitx.fcitx5.android.data.theme.ThemePrefs
 import org.fcitx.fcitx5.android.utils.item
+import org.fcitx.fcitx5.android.utils.awaitFrame
 import org.fcitx.fcitx5.android.utils.navbarFrameHeight
 import org.fcitx.fcitx5.android.utils.styledColorOrDefault
 import splitties.views.dsl.core.withTheme
 import kotlin.math.max
-import kotlin.coroutines.resume
 
 abstract class BaseInputView(
     val service: FcitxInputMethodService,
@@ -75,12 +73,7 @@ abstract class BaseInputView(
                 onStartHandleFcitxEvent()
                 for (ignored in updates) {
                     if (synchronized(pending) { pending.isEmpty() }) continue
-                    suspendCancellableCoroutine<Unit> { continuation ->
-                        val clock = Choreographer.getInstance()
-                        val callback = Choreographer.FrameCallback { continuation.resume(Unit) }
-                        clock.postFrameCallback(callback)
-                        continuation.invokeOnCancellation { clock.removeFrameCallback(callback) }
-                    }
+                    awaitFrame()
                     val batch = synchronized(pending) {
                         updates.tryReceive()
                         pending.values.toList().also { pending.clear() }

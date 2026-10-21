@@ -25,7 +25,9 @@ import com.google.android.material.snackbar.BaseTransientBottomBar.BaseCallback
 import com.google.android.material.snackbar.Snackbar
 import com.google.android.material.snackbar.SnackbarContentLayout
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import org.fcitx.fcitx5.android.R
 import org.fcitx.fcitx5.android.data.clipboard.ClipboardManager
 import org.fcitx.fcitx5.android.data.clipboard.db.ClipboardEntry
@@ -125,9 +127,17 @@ class ClipboardWindow : InputWindow.ExtendedInputWindow<ClipboardWindow>() {
 
             override fun onSplit(entry: ClipboardEntry) { windowManager.attachWindow(TokenizedContentWindow(entry.text)) }
             override fun onCleanLink(entry: ClipboardEntry) {
-                val filter=org.fcitx.fcitx5.android.data.clipboard.ClearUrlsRuleFilter(context.assets.open("clearurls-rules.json").bufferedReader().use { it.readText() })
-                service.commitText(filter.transform(entry.text))
-                if(clipboardReturnAfterPaste) windowManager.attachWindow(KeyboardWindow)
+                val token=service.inputActionToken
+                val manager=windowManager
+                service.lifecycleScope.launch {
+                    val cleaned=withContext(Dispatchers.Default) {
+                        org.fcitx.fcitx5.android.data.clipboard.ClearUrlsRuleFilter.bundled.transform(entry.text)
+                    }
+                    if(service.isCurrentInputTarget(token) && manager.isAttached(this@ClipboardWindow)) {
+                        service.commitText(cleaned)
+                        if(clipboardReturnAfterPaste) manager.attachWindow(KeyboardWindow)
+                    }
+                }
             }
             override fun onPaste(entry: ClipboardEntry) {
                 service.commitText(entry.text)

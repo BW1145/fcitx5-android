@@ -6,6 +6,7 @@ import android.view.View
 import android.widget.*
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.*
+import kotlinx.coroutines.channels.Channel
 import org.fcitx.fcitx5.android.data.PrivacyMode
 import org.fcitx.fcitx5.android.data.SavedContentStore
 import org.fcitx.fcitx5.android.data.ai.*
@@ -14,14 +15,15 @@ import org.fcitx.fcitx5.android.data.theme.panelDrawable
 import org.fcitx.fcitx5.android.input.FcitxInputMethodService
 import org.fcitx.fcitx5.android.ui.main.AiSettingsActivity
 import org.fcitx.fcitx5.android.utils.clipboardManager
+import org.fcitx.fcitx5.android.utils.awaitFrame
 
 /** This panel uses the same isolated editor/session boundary as content search. */
 internal class AiPanel(
     private val service:FcitxInputMethodService, private val theme:Theme,
     private val input:EditText, private val prepareSend:()->Unit,
-    private val finish:(String,Boolean)->Unit
+    private val finish:(String,Boolean)->Unit,
+    private val client:AiClient=AiClient()
 ) {
-    private val client=AiClient()
     private var job:Job?=null
     private var generation=0
     private var conversation=AiStore.Conversation()
@@ -120,6 +122,17 @@ internal class AiPanel(
         send.isEnabled=false;state.text="正在请求…";renderMessages()
         job=service.lifecycleScope.launch {
             var reply=""
+            val updates=Channel<String>(Channel.CONFLATED)
+            val rendering=launch {
+                for(partial in updates) {
+                    awaitFrame()
+                    val latest=updates.tryReceive().getOrNull() ?: partial
+                    if(generation==token && requestVersion==AiStore.version) {
+                        messages.text=display(before+AiStore.Message("assistant",latest))
+                        scroll.fullScroll(View.FOCUS_DOWN)
+                    }
+                }
+            }
             try {
                 val credentials=AiStore.read {
                     check(requestVersion==AiStore.version) { "会话数据已更新，请重新打开 AI" }
@@ -127,14 +140,14 @@ internal class AiPanel(
                 }
                 client.generate(credentials.first,credentials.second,before) { partial ->
                     reply=partial
-                    withContext(Dispatchers.Main) { if(generation==token && requestVersion==AiStore.version) {
-                        messages.text=display(before+AiStore.Message("assistant",partial));scroll.fullScroll(View.FOCUS_DOWN)
-                    } }
+                    updates.trySend(partial)
                 }
                 if(generation==token) state.text="回复完成"
             } catch(_:CancellationException) { if(generation==token) state.text="已停止" }
             catch(e:Exception) { if(generation==token) state.text=e.message ?: "请求失败" }
             finally {
+                updates.cancel()
+                rendering.cancel()
                 val current=generation==token && conversation.id==request.id
                 val draft=if(current) input.text.toString() else null
                 withContext(NonCancellable) {
@@ -161,7 +174,13 @@ internal class AiPanel(
             return if(start>=0 && end>start) messages.text.subSequence(start,end).toString() else answer
         }
         listOf("插入" to { finish(chosen(),false) },"替换草稿" to { finish(chosen(),true) },"收藏" to {
-            val text=chosen();SavedContentStore.put(null,text.take(18),text);state.text="已保存到常用内容"
+            val text=chosen()
+            val token=generation
+            service.lifecycleScope.launch {
+                withContext(Dispatchers.IO) { SavedContentStore.put(null,text.take(18),text) }
+                if(generation==token) state.text="已保存到常用内容"
+            }
+            Unit
         }).forEach { (name,action) -> actions.addView(button(name,action),LinearLayout.LayoutParams(0,dp(36),1f)) }
     }
     private fun render() {

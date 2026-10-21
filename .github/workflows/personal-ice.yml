@@ -27,7 +27,7 @@ jobs:
       - id: version
         name: Choose one version for all delivered APKs
         run: |
-          echo "name=1.3.4" >> "$GITHUB_OUTPUT"
+          echo "name=1.3.5" >> "$GITHUB_OUTPUT"
           echo "code=$((3000 + GITHUB_RUN_NUMBER))" >> "$GITHUB_OUTPUT"
           echo "timestamp=$(date +%s000)" >> "$GITHUB_OUTPUT"
 
@@ -327,6 +327,8 @@ jobs:
           小企鹅输入法定制版，适用于 arm64 安卓设备，主包内置 Rime、雾凇全拼、离线模型及 Anthy 日语。
 
           新版输入体验：
+          - 三个点菜单复用界面，返回时取消待处理刷新；工具栏与宏配置按需读取。
+          - AI 流式回复按屏幕帧刷新，常用内容后台读写并复用可见条目，链接清理在后台执行并复用规则。
           - 拼音、候选与状态栏合并刷新到最新状态，候选上屏后清空拼音栏，文字提交与删除保持顺序。
           - 候选规则共享缓存，AI 会话在后台保存并按需读取，历史记录分批加载。
           - 沿用现有数据格式，覆盖升级及导入备份后自动刷新缓存。

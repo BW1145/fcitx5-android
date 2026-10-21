@@ -101,12 +101,13 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
     private val inputEvents = Channel<InputDispatch>(Channel.UNLIMITED, onUndeliveredElement = {
         if (it is InputDispatch.Barrier) it.completion.cancel()
     })
-    private fun isEditorEvent(event: FcitxEvent<*>) = event is FcitxEvent.CommitStringEvent ||
+    private fun isServiceEvent(event: FcitxEvent<*>) = event is FcitxEvent.CommitStringEvent ||
         event is FcitxEvent.ClientPreeditEvent || event is FcitxEvent.DeleteSurroundingEvent ||
-        event is FcitxEvent.KeyEvent
+        event is FcitxEvent.KeyEvent || event is FcitxEvent.IMChangeEvent ||
+        event is FcitxEvent.SwitchInputMethodEvent
 
     private val inputEventListener: (FcitxEvent<*>) -> Unit = {
-        if (isEditorEvent(it)) inputEvents.trySend(InputDispatch.Event(it))
+        if (isServiceEvent(it)) inputEvents.trySend(InputDispatch.Event(it))
     }
     private var panelEditorTarget: PanelEditorSession? = null
     private var panelEditorConnection: InputConnection? = null
@@ -304,11 +305,6 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
                     is InputDispatch.Event -> handleFcitxEvent(message.event)
                     is InputDispatch.Barrier -> message.completion.complete(Unit)
                 }
-            }
-        }
-        lifecycleScope.launch {
-            fcitx.runImmediately { eventFlow }.collect {
-                if (!isEditorEvent(it)) handleFcitxEvent(it)
             }
         }
         lifecycleScope.launch {

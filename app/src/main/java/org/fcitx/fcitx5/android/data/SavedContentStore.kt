@@ -16,7 +16,7 @@ object SavedContentStore {
         .resolve("data/saved-content.json")
     private val json = Json { prettyPrint = true }
 
-    fun load(): List<Entry> {
+    @Synchronized fun load(): List<Entry> {
         val atomic = AtomicFile(file)
         if (!file.exists() && !file.resolveSibling(file.name + ".bak").exists()) return emptyList()
         return atomic.openRead().bufferedReader(Charsets.UTF_8).use { json.decodeFromString(it.readText()) }
@@ -35,7 +35,7 @@ object SavedContentStore {
         }
     }
 
-    fun put(id: String?, title: String, text: String): Entry {
+    @Synchronized fun put(id: String?, title: String, text: String): Entry {
         val entries = load().toMutableList()
         val entry = Entry(id ?: UUID.randomUUID().toString(), title, text)
         val index = entries.indexOfFirst { it.id == entry.id }
@@ -44,9 +44,9 @@ object SavedContentStore {
         return entry
     }
 
-    fun delete(id: String) = save(load().filterNot { it.id == id })
+    @Synchronized fun delete(id: String) = save(load().filterNot { it.id == id })
 
-    fun move(id: String, delta: Int) {
+    @Synchronized fun move(id: String, delta: Int) {
         val entries = load().toMutableList()
         val index = entries.indexOfFirst { it.id == id }
         if (index < 0 || index + delta !in entries.indices) return

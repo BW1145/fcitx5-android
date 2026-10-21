@@ -11,7 +11,7 @@ import java.net.URL
 import java.net.URLEncoder
 
 /** Network requests begin only from an explicit send or connection test. */
-class AiClient {
+open class AiClient {
     @Volatile private var connection:HttpURLConnection?=null
     fun stop() { connection?.disconnect() }
 
@@ -60,7 +60,7 @@ class AiClient {
         }
     }
 
-    suspend fun generate(config:AiStore.Config,key:String,messages:List<AiStore.Message>,update:suspend (String)->Unit):String = withContext(Dispatchers.IO) {
+    open suspend fun generate(config:AiStore.Config,key:String,messages:List<AiStore.Message>,update:suspend (String)->Unit):String = withContext(Dispatchers.IO) {
         require(config.model.isNotBlank()) { "请先设置模型名称" }
         require(key.isNotBlank()) { "请先填写 API Key" }
         val http=URL(endpoint(config)).openConnection() as HttpURLConnection
