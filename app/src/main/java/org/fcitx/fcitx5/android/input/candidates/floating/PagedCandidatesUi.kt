@@ -19,6 +19,7 @@ import com.google.android.flexbox.FlexDirection
 import com.google.android.flexbox.FlexWrap
 import com.google.android.flexbox.FlexboxLayoutManager
 import org.fcitx.fcitx5.android.core.FcitxEvent
+import org.fcitx.fcitx5.android.core.CandidateWord
 import org.fcitx.fcitx5.android.core.FcitxEvent.PagedCandidateEvent.LayoutHint
 import org.fcitx.fcitx5.android.data.theme.Theme
 import splitties.views.dsl.core.Ui
@@ -28,8 +29,8 @@ class PagedCandidatesUi(
     override val ctx: Context,
     val theme: Theme,
     private val setupTextView: TextView.() -> Unit,
-    private val onCandidateClick: (Int) -> Unit,
-    private val onCandidateAction: (Int, String, View) -> Unit,
+    private val onCandidateClick: (Int, CandidateWord) -> Unit,
+    private val onCandidateAction: (Int, CandidateWord, View) -> Unit,
     private val onPrevPage: () -> Unit,
     private val onNextPage: () -> Unit
 ) : Ui {
@@ -79,10 +80,10 @@ class PagedCandidatesUi(
                     val candidate = data.candidates[position]
                     holder.ui.update(candidate, active = position == data.cursorIndex)
                     holder.ui.root.setOnClickListener {
-                        onCandidateClick.invoke(position)
+                        onCandidateClick.invoke(position, candidate)
                     }
                     holder.ui.root.setOnLongClickListener { v ->
-                        onCandidateAction.invoke(position, candidate.text, v)
+                        onCandidateAction.invoke(position, candidate, v)
                         true
                     }
                     holder.ui.root.updateLayoutParams<FlexboxLayoutManager.LayoutParams> {

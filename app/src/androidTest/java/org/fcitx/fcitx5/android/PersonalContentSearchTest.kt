@@ -472,19 +472,18 @@ class PersonalContentSearchTest {
             await("The active composition has candidates",180_000) { fcitx.runImmediately { getCandidates(0,1).isNotEmpty() } }
             val victim=fcitx.runOnReady { getCandidates(0,1).first().text }
             val pending=fcitx.runOnReady { inputPanelCached.preedit.toString() }
-            WordLibrary.saveRules(previous.filterNot { it.engine=="rime" && it.reading=="nihao" && it.text==victim }+
-                WordLibrary.Rule("rime","nihao",victim,"hide"))
+            WordLibrary.setRule(fcitx,WordLibrary.Word("rime_ice",victim,"ni hao","1"),"hide")
             await("A preference edit refreshes candidates without another key or reset") {
                 fcitx.runImmediately { getCandidates(0,16).none { it.text==victim } }
             }
             assertEquals(pending,fcitx.runOnReady { inputPanelCached.preedit.toString() })
-            WordLibrary.saveRules(previous)
+            WordLibrary.updateRules(fcitx) { previous }
             await("Restoring preferences refreshes the same composition") {
                 fcitx.runImmediately { getCandidates(0,1).firstOrNull()?.text==victim }
             }
             assertEquals(pending,fcitx.runOnReady { inputPanelCached.preedit.toString() })
         } finally {
-            WordLibrary.saveRules(previous);activityRule.finishActivity();FcitxDaemon.disconnect("rule-refresh-test")
+            WordLibrary.updateRules(fcitx) { previous };activityRule.finishActivity();FcitxDaemon.disconnect("rule-refresh-test")
         }
     }
 }

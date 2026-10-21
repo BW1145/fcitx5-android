@@ -38,6 +38,7 @@ interface FcitxAPI {
      * that all preceding native events have actually been handled.
      */
     suspend fun enqueueInputBarrier(enqueue: () -> Unit)
+    suspend fun setInputTarget(target: Long)
 
     val isReady: Boolean
 
@@ -48,6 +49,7 @@ interface FcitxAPI {
     val clientPreeditCached: FormattedText
 
     val inputPanelCached: FcitxEvent.InputPanelEvent.Data
+    val candidateRevisionCached: Long
 
     fun setLogRule(verbose: Boolean)
 
@@ -68,7 +70,9 @@ interface FcitxAPI {
     suspend fun sendKey(sym: KeySym, states: KeyStates, code: Int = 0, up: Boolean = false, timestamp: Int = -1)
 
     suspend fun select(idx: Int): Boolean
+    suspend fun select(idx: Int, candidate: CandidateWord): Boolean
     suspend fun isEmpty(): Boolean
+    suspend fun hasPreedit(): Boolean
     suspend fun reset()
     suspend fun moveCursor(position: Int)
 
@@ -118,10 +122,15 @@ interface FcitxAPI {
     suspend fun getCandidates(offset: Int, limit: Int): Array<CandidateWord>
 
     suspend fun getCandidateActions(idx: Int): Array<CandidateAction>
+    suspend fun getCandidateActions(idx: Int, candidate: CandidateWord): Array<CandidateAction>
     suspend fun triggerCandidateAction(idx: Int, actionIdx: Int)
+    suspend fun triggerCandidateAction(idx: Int, actionIdx: Int, candidate: CandidateWord)
 
     suspend fun setCandidatePagingMode(mode: Int)
     suspend fun refreshCandidatePreferences()
+    /** Read/modify/write rule files on the same engine queue as native candidate actions. */
+    suspend fun updateCandidatePreferences(update: () -> Unit)
+    suspend fun preferenceSchemas(dictionary: String): Array<String>
     suspend fun offsetCandidatePage(delta: Int)
 
     suspend fun triggerCandidateListTabAction(id: Int)

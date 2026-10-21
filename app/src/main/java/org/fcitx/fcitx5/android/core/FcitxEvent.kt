@@ -5,6 +5,8 @@
 package org.fcitx.fcitx5.android.core
 
 sealed class FcitxEvent<T>(open val data: T) {
+    var inputTarget: Long = 0
+        internal set
 
     abstract val eventType: EventType
 

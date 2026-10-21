@@ -11,6 +11,8 @@ data class CandidateWord @JvmOverloads constructor(
     val comment: String,
     val spaceBetweenComment: Boolean = true
 ) {
+    var revision: Long = 0
+        internal set
     fun textWithComment(): String {
         return buildString {
             append(text)

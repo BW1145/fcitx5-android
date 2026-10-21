@@ -62,7 +62,9 @@ class PersonalPackagingTest {
         val snapshot=try {
             connection.runOnReady { activate(android.os.Process.myUid(),context.packageName);focus();activateIme("rime");reset() }
             WordLibrary.add(connection,"rime_ice","维护词条","wei hu ci tiao",1000)
-            WordLibrary.setRule(WordLibrary.Word("rime_ice","维护词条","wei hu ci tiao","1"),"lower")
+            // Seed the legacy TSV using only APIs present in the upgrade fixture.
+            root.resolve("data/candidate-preferences.tsv").writeText(
+                WordLibrary.Rule("rime","weihucitiao","维护词条","lower").line+"\n",Charsets.UTF_8)
             WordLibrary.snapshot(connection,"升级前输入习惯")
         } finally { FcitxDaemon.disconnect("maintenance-upgrade") }
         val files=listOf("data/ai/settings.json","data/ai/conversations/maintenance-upgrade.json",

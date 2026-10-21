@@ -28,7 +28,7 @@ set(Rime_dependencies
 add_library(Rime_static STATIC IMPORTED)
 set_target_properties(Rime_static PROPERTIES
         IMPORTED_LOCATION "${PREBUILT_DIR}/librime/${ANDROID_ABI}/lib/librime.a"
-        INTERFACE_INCLUDE_DIRECTORIES "${PREBUILT_DIR}/librime/${ANDROID_ABI}/include"
+        INTERFACE_INCLUDE_DIRECTORIES "${PREBUILT_DIR}/librime/${ANDROID_ABI}/include;${PREBUILT_DIR}/leveldb/${ANDROID_ABI}/include"
         INTERFACE_LINK_LIBRARIES "${Rime_dependencies}"
         )
 

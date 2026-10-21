@@ -13,10 +13,12 @@
 #include <fcitx/statusarea.h>
 #include <fcitx-utils/event.h>
 #include <fcitx-utils/standardpaths.h>
+#include <tuple>
 
 #include "androidfrontend.h"
 #include "candidatepreferences.h"
 #include "../personal-anthy-public.h"
+#include "../personal-rime-public.h"
 
 namespace fcitx {
 
@@ -38,19 +40,21 @@ public:
     }
 
     [[nodiscard]] const char *frontend() const override { return "androidfrontend"; }
+    void setInputTarget(int64_t target) { inputTarget_ = target; }
+    int64_t inputTarget() const { return inputTarget_; }
 
     void commitStringImpl(const std::string &text) override {
         lastCommitted_ = text;
-        frontend_->commitString(text, -1);
+        frontend_->commitString(text, -1, inputTarget_);
     }
 
     void commitStringWithCursorImpl(const std::string &text, size_t cursor) override {
         lastCommitted_ = text;
-        frontend_->commitString(text, static_cast<int>(cursor));
+        frontend_->commitString(text, static_cast<int>(cursor), inputTarget_);
     }
 
     void forwardKeyImpl(const ForwardKeyEvent &key) override {
-        frontend_->forwardKey(key.rawKey(), key.isRelease());
+        frontend_->forwardKey(key.rawKey(), key.isRelease(), inputTarget_);
     }
 
     void deleteSurroundingTextImpl(int offset, unsigned int size) override {
@@ -61,11 +65,11 @@ public:
                          << size;
             return;
         }
-        frontend_->deleteSurrounding(before, after);
+        frontend_->deleteSurrounding(before, after, inputTarget_);
     }
 
     void updatePreeditImpl() override {
-        frontend_->updateClientPreedit(filterText(inputPanel().clientPreedit()));
+        frontend_->updateClientPreedit(filterText(inputPanel().clientPreedit()), inputTarget_);
     }
 
     void updateInputPanel() {
@@ -153,7 +157,9 @@ public:
         }
         if (prefer_) {
             auto candidates=preferenceCandidates(0,list->size());
-            frontend_->updatePagedCandidate(PagedCandidateEntity(candidates,candidates.empty() ? -1 : 0,
+            auto cursor = std::find(order_.begin(), order_.end(), cursorIndex);
+            int displayCursor = cursor == order_.end() ? -1 : static_cast<int>(cursor - order_.begin());
+            frontend_->updatePagedCandidate(PagedCandidateEntity(candidates,displayCursor,
                 layoutHint,hasPrev,hasNext));
             return;
         }
@@ -205,6 +211,7 @@ public:
     }
 
     std::vector<CandidateEntity> getCandidates(const int offset, const int limit) {
+        if (ensureCandidateRevision()) beginPreferences(paged_);
         if(prefer_) return preferenceCandidates(offset,limit);
         std::vector<CandidateEntity> candidates;
         const auto &list = inputPanel().candidateList();
@@ -229,6 +236,16 @@ public:
             }
         }
         return candidates;
+    }
+
+    bool candidateMatches(int idx, const std::string &text, int64_t revision) {
+        if (ensureCandidateRevision()) { beginPreferences(paged_);return false; }
+        if (revision != candidateRevision_) return false;
+        if (!inputPanel().candidateList()) return false;
+        idx = originalIndex(idx);
+        if (idx < 0) return false;
+        try { return filterString(rawCandidate(idx).text()) == text; }
+        catch (const std::invalid_argument &) { return false; }
     }
 
     std::vector<CandidateActionEntity> getCandidateAction(int idx) {
@@ -338,16 +355,17 @@ public:
     }
 
     bool preferredKey(const Key &key,bool release) {
-        if(!prefer_ || !inputPanel().candidateList() || key.states().testAny(KeyState::SimpleMask)) return false;
+        if(key.states().testAny(KeyState::SimpleMask)) return false;
         if(key.sym()!=FcitxKey_space && key.sym()!=FcitxKey_0 &&
             !(key.sym()>=FcitxKey_1 && key.sym()<=FcitxKey_9)) return false;
+        if (ensureCandidateRevision()) beginPreferences(paged_);
+        if(!prefer_ || !inputPanel().candidateList()) return false;
         if(release) return true;
         const auto *entry=frontend_->instance()->inputMethodEntry(this);
         if(key.sym()==FcitxKey_space && entry && entry->uniqueName()=="anthy") {
             const auto index=originalIndex(0);
-            if(index>=0) frontend_->instance()->addonManager().addon("anthy")->call<IAnthyEngine::personalSelectPreview>(
+            return index>=0 && frontend_->instance()->addonManager().addon("anthy")->call<IAnthyEngine::personalSelectPreview>(
                 this,rawCandidate(index).text().toString());
-            return true;
         }
         const int index=key.sym()==FcitxKey_0 ? 9 :
             key.sym()>=FcitxKey_1 && key.sym()<=FcitxKey_9 ? key.sym()-FcitxKey_1 : 0;
@@ -356,6 +374,25 @@ public:
     }
 
 private:
+    int64_t inputTarget_ = 0;
+    int64_t candidateRevision_ = 0;
+    std::weak_ptr<CandidateList> candidateListSnapshot_;
+    std::tuple<int64_t, std::string, std::string, std::string> candidateContext_;
+
+    bool ensureCandidateRevision(bool force = false) {
+        static int64_t nextRevision = 0;
+        auto entry = frontend_->instance()->inputMethodEntry(this);
+        auto context = std::make_tuple(inputTarget_, entry ? entry->uniqueName() : "",
+            inputPanel().preedit().toString(), inputPanel().clientPreedit().toString());
+        const auto &list = inputPanel().candidateList();
+        if (force || candidateListSnapshot_.lock() != list || candidateContext_ != context) {
+            candidateRevision_ = ++nextRevision;
+            candidateListSnapshot_ = list;
+            candidateContext_ = std::move(context);
+            return true;
+        }
+        return false;
+    }
     bool isForgetAction(const CandidateAction &action) {
         auto entry=frontend_->instance()->inputMethodEntry(this);
         return (entry && entry->uniqueName()=="rime" && action.id()==0) ||
@@ -363,21 +400,33 @@ private:
     }
     CandidatePreferences preferences_{StandardPaths::global().userDirectory(StandardPathsType::PkgData)/"candidate-preferences.tsv"};
     std::string scope_;
+    std::string legacyScope_;
     std::string lastCommitted_;
     bool prefer_=false, paged_=false, ended_=false;
     int scanned_=0;
     std::vector<int> order_, lowered_;
 
     void beginPreferences(bool paged) {
+        ensureCandidateRevision(true);
         preferences_.load();paged_=paged;ended_=false;scanned_=0;
         order_.clear();lowered_.clear();
         auto *entry=frontend_->instance()->inputMethodEntry(this);
         auto preedit=inputPanel().preedit().toString();
         if(preedit.empty()) preedit=inputPanel().clientPreedit().toString();
-        if(entry && entry->uniqueName()=="anthy") preedit="japanese";
-        scope_=preferenceHex(entry ? entry->uniqueName() : "")+"\t"+
+        std::string engine=entry ? entry->uniqueName() : "";
+        legacyScope_.clear();
+        if (engine=="rime") {
+            auto context=frontend_->instance()->addonManager().addon("rime")->call<IRimeEngine::personalContext>(this);
+            if (context.size()==2) { engine += ":"+context[0];preedit=context[1]; }
+        } else if (engine=="anthy") {
+            preedit=frontend_->instance()->addonManager().addon("anthy")->call<IAnthyEngine::personalReading>(this);
+            legacyScope_=preferenceHex("anthy")+"\t"+preferenceHex("japanese");
+        }
+        scope_=preferenceHex(engine)+"\t"+
             preferenceHex(preedit.empty() ? "predict:"+lastCommitted_ : preferenceContext(preedit));
-        prefer_=preferences_.hasScope(scope_);
+        if (engine.rfind("rime:",0)==0) preferences_.migrateScope(
+            preferenceHex("rime")+"\t"+preferenceHex(preedit.empty() ? "predict:"+lastCommitted_ : preferenceContext(preedit)), scope_);
+        prefer_=preferences_.hasScope(scope_) || (!legacyScope_.empty() && preferences_.hasScope(legacyScope_));
     }
     const CandidateWord &rawCandidate(int index) {
         const auto &list=inputPanel().candidateList();
@@ -395,7 +444,11 @@ private:
                 try {
                     int index=scanned_++;
                     const auto &word=rawCandidate(index);
-                    int mode=preferences_.mode(scope_,filterString(word.text()));
+                    const auto text=filterString(word.text());
+                    // Old Anthy rows did not save readings. Claim a legacy choice
+                    // only when that word actually appears for this reading.
+                    if(!legacyScope_.empty()) preferences_.migrateWord(legacyScope_,scope_,text);
+                    int mode=preferences_.mode(scope_,text);
                     if(mode==2) lowered_.push_back(index);
                     else if(mode==0) order_.push_back(index);
                 } catch(const std::invalid_argument &) { ended_=true; }
@@ -407,6 +460,7 @@ private:
         }
     }
     int originalIndex(int index) {
+        if (ensureCandidateRevision()) beginPreferences(paged_);
         if(index<0) return -1;
         if(!prefer_) return index;
         fillOrder(index+1);
@@ -431,13 +485,17 @@ private:
     }
 
     CandidateEntity candidateEntity(const CandidateWord &candidate) {
-        return CandidateEntity("", filterString(candidate.text()),
+        auto result = CandidateEntity("", filterString(candidate.text()),
                                filterString(candidate.comment()), candidate.spaceBetweenComment());
+        result.revision = candidateRevision_;
+        return result;
     }
 
     CandidateEntity candidateEntityWithLabel(const Text &label, const CandidateWord &candidate) {
-        return CandidateEntity(filterString(label), filterString(candidate.text()),
+        auto result = CandidateEntity(filterString(label), filterString(candidate.text()),
                                filterString(candidate.comment()), candidate.spaceBetweenComment());
+        result.revision = candidateRevision_;
+        return result;
     }
 };
 
@@ -495,30 +553,31 @@ AndroidFrontend::AndroidFrontend(Instance *instance)
 
 void AndroidFrontend::keyEvent(const Key &key, bool isRelease, const int timestamp) {
     if (!activeIC_) return;
+    const auto target = activeIC_->inputTarget();
     if(activeIC_->preferredKey(key,isRelease)) return;
     KeyEvent keyEvent(activeIC_, key, isRelease);
     activeIC_->keyEvent(keyEvent);
     if (!keyEvent.accepted()) {
         auto sym = key.sym();
-        keyEventCallback(sym, key.states(), Key::keySymToUnicode(sym), isRelease, timestamp);
+        keyEventCallback(sym, key.states(), Key::keySymToUnicode(sym), isRelease, timestamp, target);
     }
 }
 
-void AndroidFrontend::forwardKey(const Key &key, bool isRelease) {
+void AndroidFrontend::forwardKey(const Key &key, bool isRelease, int64_t target) {
     auto sym = key.sym();
-    keyEventCallback(sym, key.states(), Key::keySymToUnicode(sym), isRelease, -1);
+    keyEventCallback(sym, key.states(), Key::keySymToUnicode(sym), isRelease, -1, target);
 }
 
-void AndroidFrontend::commitString(const std::string &str, const int cursor) {
-    commitStringCallback(str, cursor);
+void AndroidFrontend::commitString(const std::string &str, const int cursor, int64_t target) {
+    commitStringCallback(str, cursor, target);
 }
 
 void AndroidFrontend::updateCandidateList(const std::vector<CandidateEntity> &candidates, const int size) {
     candidateListCallback(candidates, size);
 }
 
-void AndroidFrontend::updateClientPreedit(const Text &clientPreedit) {
-    preeditCallback(clientPreedit);
+void AndroidFrontend::updateClientPreedit(const Text &clientPreedit, int64_t target) {
+    preeditCallback(clientPreedit, target);
 }
 
 void AndroidFrontend::updateInputPanel(const Text &preedit, const Text &auxUp, const Text &auxDown, const std::vector<CandidateActionEntity> &tabs) {
@@ -556,6 +615,23 @@ void AndroidFrontend::triggerTabAction(const int idx) {
 bool AndroidFrontend::isInputPanelEmpty() {
     if (!activeIC_) return true;
     return activeIC_->inputPanel().empty();
+}
+
+bool AndroidFrontend::hasInputPreedit() {
+    if (!activeIC_) return false;
+    const auto &panel = activeIC_->inputPanel();
+    return !panel.clientPreedit().empty() || !panel.preedit().empty();
+}
+
+void AndroidFrontend::setInputTarget(int64_t target) {
+    if (activeIC_ && activeIC_->inputTarget() != target) {
+        activeIC_->reset();
+        activeIC_->setInputTarget(target);
+    }
+}
+
+bool AndroidFrontend::candidateMatches(int idx, const std::string &text, int64_t revision) {
+    return activeIC_ && activeIC_->candidateMatches(idx, text, revision);
 }
 
 void AndroidFrontend::resetInputContext() {
@@ -615,8 +691,8 @@ std::vector<CandidateEntity> AndroidFrontend::getCandidates(const int offset, co
     return activeIC_->getCandidates(offset, limit);
 }
 
-void AndroidFrontend::deleteSurrounding(const int before, const int after) {
-    deleteSurroundingCallback(before, after);
+void AndroidFrontend::deleteSurrounding(const int before, const int after, int64_t target) {
+    deleteSurroundingCallback(before, after, target);
 }
 
 void AndroidFrontend::showToast(const std::string &s) {

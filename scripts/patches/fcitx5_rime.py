@@ -1,6 +1,34 @@
 from .common import replace
 
 def apply(source):
+    replace(source / "rimeengine.h", '#include "rimesession.h"',
+            '#include "rimesession.h"\n#include "personal-rime-public.h"')
+    replace(source / "rimeengine.h", '    auto &factory() { return factory_; }', '''    auto &factory() { return factory_; }
+    std::vector<std::string> personalContext(InputContext *ic) {
+        auto *s = state(ic);
+        if (!s || !s->session(false)) return {};
+        const char *input = api_->get_input(s->session(false));
+        return {s->currentSchema(), input ? input : ""};
+    }
+    FCITX_ADDON_EXPORT_FUNCTION(RimeEngine, personalContext);
+    std::vector<std::string> personalSchemas(const std::string &dictionary) {
+        std::vector<std::string> result;
+        RimeSchemaList schemas{};
+        if (!api_->get_schema_list(&schemas)) return result;
+        for (size_t i = 0; i < schemas.size; ++i) {
+            RimeConfig config{};
+            const char *id = schemas.list[i].schema_id;
+            if (!api_->schema_open(id, &config)) continue;
+            char value[1024]{};
+            bool found = api_->config_get_string(&config, "translator/user_dict", value, sizeof(value));
+            if (!found || !value[0]) api_->config_get_string(&config, "translator/dictionary", value, sizeof(value));
+            if (dictionary == value) result.emplace_back(id);
+            api_->config_close(&config);
+        }
+        api_->free_schema_list(&schemas);
+        return result;
+    }
+    FCITX_ADDON_EXPORT_FUNCTION(RimeEngine, personalSchemas);''')
     # Publish recomputed candidates after a menu action, just as after a key event.
     replace(source / "rimeaction.cpp",
             "    api->set_option(session, option_.c_str(), !oldValue);",

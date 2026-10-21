@@ -6,6 +6,9 @@
 #include <fstream>
 #include <sstream>
 #include <vector>
+#include <memory>
+#include <leveldb/db.h>
+#include "androidfrontend/candidatepreferences.h"
 
 namespace fcitx::rime {
 namespace personal {
@@ -29,6 +32,34 @@ inline void syncFiles(const fs::path &from,const fs::path &to,bool remove=false)
         if(remove) fs::remove(path);
         else copyTree(path,to/fs::relative(path,from));
     }
+}
+// Convert the saved LevelDB into Rime's uniform snapshot format. Keep the full
+// values (c/d/t) and metadata; Rime's own restore API performs the actual merge.
+inline void learningSnapshot(const fs::path &source,const fs::path &staging,const fs::path &output) {
+    fs::remove_all(staging);copyTree(source,staging);
+    leveldb::DB *raw=nullptr;
+    const auto status=leveldb::DB::Open(leveldb::Options{},staging.string(),&raw);
+    if(!status.ok()) throw std::runtime_error("Unable to open saved learning: "+status.ToString());
+    std::unique_ptr<leveldb::DB> db(raw);
+    std::unique_ptr<leveldb::Iterator> it(db->NewIterator(leveldb::ReadOptions{}));
+    std::ofstream out(output);
+    for(it->SeekToFirst();it->Valid();it->Next()) {
+        auto key=it->key().ToString();auto value=it->value().ToString();
+        if(!key.empty() && key[0]=='\x01') out<<"#@"<<key.substr(1)<<'\t'<<value<<'\n';
+        else if(key>=" ") out<<key<<'\t'<<value<<'\n';
+    }
+    out.close();
+    if(!it->status().ok() || !out) throw std::runtime_error("Unable to read saved learning");
+}
+inline void validateLearningSnapshot(const fs::path &source,const std::string &name) {
+    std::ifstream input(source);std::string line,dbName,dbType;
+    while(std::getline(input,line)) {
+        if(!line.empty() && line.back()=='\r') line.pop_back();
+        if(line.rfind("#@/db_name\t",0)==0) dbName=line.substr(11);
+        if(line.rfind("#@/db_type\t",0)==0) dbType=line.substr(11);
+    }
+    if(!input.eof() || dbType!="userdb" || (dbName!=name && dbName!=name+".userdb"))
+        throw std::runtime_error("Invalid learning snapshot metadata");
 }
 inline void operate(RimeApi *api,const std::string &operation,const fs::path &root) {
     const auto data=root.parent_path();
@@ -69,14 +100,20 @@ inline void operate(RimeApi *api,const std::string &operation,const fs::path &ro
             if(action=="backup") {
                 if(fs::exists(snapshot/"db")) throw std::runtime_error("Backup already exists");
                 fs::create_directories(snapshot/"db");
-                for(const auto &item:fs::directory_iterator(root))
-                    if(dictionary(item.path())) copyTree(item.path(),snapshot/"db"/item.path().filename());
+                fs::create_directories(snapshot/"learning");
+                for(const auto &item:fs::directory_iterator(root)) {
+                    if(!dictionary(item.path())) continue;
+                    copyTree(item.path(),snapshot/"db"/item.path().filename());
+                    learningSnapshot(item.path(),exchange/"backup-db",snapshot/"learning"/(item.path().filename().string()+".txt"));
+                }
+                fs::remove_all(exchange/"backup-db");
                 copyTree(exports,snapshot/"words");
                 if(!sync.empty()) syncFiles(sync,snapshot/"sync");
                 auto prefs=data/"candidate-preferences.tsv";
                 if(fs::exists(prefs)) copyTree(prefs,snapshot/"candidate-preferences.tsv");
             } else if(action=="restore") {
                 if(!fs::is_directory(snapshot/"db")) throw std::runtime_error("Backup data is missing");
+                CandidatePreferences::read(snapshot/"candidate-preferences.tsv");
                 std::vector<fs::path> current;
                 for(const auto &item:fs::directory_iterator(root)) if(dictionary(item.path())) current.push_back(item.path());
                 for(const auto &path:current) fs::remove_all(path);
@@ -87,11 +124,20 @@ inline void operate(RimeApi *api,const std::string &operation,const fs::path &ro
                 if(fs::exists(snapshot/"candidate-preferences.tsv")) copyTree(snapshot/"candidate-preferences.tsv",prefs);
                 else fs::remove(prefs);
             } else if(action=="merge") {
-                for(const auto &item:fs::directory_iterator(snapshot/"words")) {
-                    auto name=item.path().stem().string();
-                    if(levers->import_user_dict(name.c_str(),item.path().c_str())<0)
-                        throw std::runtime_error("Unable to merge dictionary: "+name);
+                if(!fs::is_directory(snapshot/"db")) throw std::runtime_error("Backup data is missing");
+                const auto rules=CandidatePreferences::read(snapshot/"candidate-preferences.tsv");
+                const auto staging=exchange/"merge-db";
+                const auto uniform=exchange/"merge.userdb.txt";
+                for(const auto &item:fs::directory_iterator(snapshot/"db")) {
+                    if(!dictionary(item.path())) continue;
+                    auto source=snapshot/"learning"/(item.path().filename().string()+".txt");
+                    if(!fs::exists(source)) { learningSnapshot(item.path(),staging,uniform);source=uniform; }
+                    validateLearningSnapshot(source,item.path().stem().string());
+                    if(!levers->restore_user_dict(source.c_str()))
+                        throw std::runtime_error("Unable to merge dictionary: "+item.path().filename().string());
                 }
+                fs::remove_all(staging);fs::remove(uniform);
+                CandidatePreferences(data/"candidate-preferences.tsv").merge(rules);
             }
         }
         std::ofstream(exchange/"status.txt")<<"ok";

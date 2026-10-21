@@ -27,12 +27,12 @@ internal object PersonalDefaults {
         }
     }
 
-    fun install(context: Context) {
-        val root = context.getExternalFilesDir(null) ?: context.filesDir
+    internal fun installExperienceDefaults(root: java.io.File) {
         val experienceMarker=root.resolve("config/personal-experience-v1")
         if(!experienceMarker.exists()) {
             val prefs=org.fcitx.fcitx5.android.data.prefs.AppPrefs.getInstance().keyboard
-            prefs.expandedCandidateStyle.setValue(org.fcitx.fcitx5.android.input.candidates.expanded.ExpandedCandidateStyle.Flexbox)
+            if (!prefs.expandedCandidateStyle.sharedPreferences.contains(prefs.expandedCandidateStyle.key))
+                prefs.expandedCandidateStyle.setValue(org.fcitx.fcitx5.android.input.candidates.expanded.ExpandedCandidateStyle.Flexbox)
             if(prefs.spaceKeyLongPressBehavior.getValue()==org.fcitx.fcitx5.android.input.keyboard.SpaceLongPressBehavior.None &&
                 org.fcitx.fcitx5.android.data.KeyMacros.load().none { it.key=="space" && it.trigger=="hold" })
                 prefs.spaceKeyLongPressBehavior.setValue(org.fcitx.fcitx5.android.input.keyboard.SpaceLongPressBehavior.Privacy)
@@ -41,6 +41,11 @@ internal object PersonalDefaults {
             if(toolbar.main()==toolbar.defaults-ai) toolbar.save(toolbar.defaults)
             experienceMarker.parentFile?.mkdirs();experienceMarker.writeText("1\n",Charsets.UTF_8)
         }
+    }
+
+    fun install(context: Context) {
+        val root = context.getExternalFilesDir(null) ?: context.filesDir
+        installExperienceDefaults(root)
         for (path in listOf(
             "config/profile", "config/config", "data/rime/default.custom.yaml",
             "data/rime/rime_ice.custom.yaml", "data/rime/personal_ice.yaml",

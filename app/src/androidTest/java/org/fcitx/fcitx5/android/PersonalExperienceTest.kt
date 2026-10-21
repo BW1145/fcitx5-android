@@ -65,7 +65,7 @@ class PersonalExperienceTest {
             assertTrue(WordLibrary.words(connection).any { it.text=="验收词甲" })
             val first=WordLibrary.snapshot(connection,"词条甲")
             WordLibrary.add(connection,"rime_ice","验收词乙","yan shou ci yi",1000)
-            WordLibrary.setRule(WordLibrary.Word("rime_ice","验收词甲","yan shou ci jia","1000"),"hide")
+            WordLibrary.setRule(connection,WordLibrary.Word("rime_ice","验收词甲","yan shou ci jia","1000"),"hide")
             val second=WordLibrary.snapshot(connection,"词条乙")
             WordLibrary.restore(connection,first,false)
             assertFalse(WordLibrary.words(connection).any { it.text=="验收词乙" })
@@ -91,7 +91,7 @@ class PersonalExperienceTest {
                 val index=original.indexOfFirst { it.text=="验收词甲" };assertTrue(index>=0)
                 assertTrue(getCandidateActions(index).any { it.id == -1002 })
                 val pending=inputPanelCached.preedit.toString()
-                WordLibrary.setRule(WordLibrary.Word("rime_ice","验收词甲","yan shou ci jia","1000"),"lower")
+                WordLibrary.setRule(connection,WordLibrary.Word("rime_ice","验收词甲","yan shou ci jia","1000"),"lower")
                 refreshCandidatePreferences()
                 val lowered=getCandidates(0,64)
                 assertEquals("Editing preferences does not reset the active composition",pending,inputPanelCached.preedit.toString())
@@ -146,10 +146,54 @@ class PersonalExperienceTest {
                 val word=japanese.first().text
                 triggerCandidateAction(0,-1002);delay(200)
                 assertNotEquals(word,getCandidates(0,64).first().text)
+                val before=clientPreeditCached.toString()+inputPanelCached.preedit.toString()
                 sendKey(' ');sendKey(' ',up=true);delay(200)
                 assertTrue("Japanese space keeps its conversion candidates visible",getCandidates(0,64).isNotEmpty())
                 assertNotEquals(word,getCandidates(0,64).first().text)
+                val after=clientPreeditCached.toString()+inputPanelCached.preedit.toString()
+                assertNotEquals("Space advances an existing conversion",before,after)
+                assertTrue(WordLibrary.rules().any { it.engine=="anthy" && it.reading=="にほんご" && it.text==word })
         }
+    }
+
+    @Test fun candidateActionsRejectAnOldListAndKeepTheCurrentComposition()=withWordFixture { connection ->
+        connection.runOnReady {
+            reset();"nihao".forEach { sendKey(it) };delay(200)
+            val old=getCandidates(0,1).first()
+            assertTrue(getCandidateActions(0,old).isNotEmpty())
+            sendKey('m');delay(200)
+            val current=getCandidates(0,1).first()
+            val pending=inputPanelCached.preedit.toString()
+            assertNotEquals(old.revision,current.revision)
+            assertTrue(getCandidateActions(0,old).isEmpty())
+            assertFalse(select(0,old))
+            val rules=WordLibrary.rules()
+            triggerCandidateAction(0,-1001,old)
+            assertEquals(rules,WordLibrary.rules())
+            assertEquals(pending,inputPanelCached.preedit.toString())
+            assertTrue(getCandidateActions(0,current).isNotEmpty())
+        }
+    }
+
+    @Test fun snapshotMergePreservesDynamicWeightsTicksAndDeletionRecords()=withWordFixture { connection ->
+        val source=WordLibrary.snapshot(connection,"完整学习记录")
+        val root=(context.getExternalFilesDir(null) ?: context.filesDir).resolve("data/input-history")
+        val learning=root.resolve("${source.id}/learning/rime_ice.userdb.txt")
+        learning.parentFile!!.mkdirs()
+        learning.writeText("#@/db_name\trime_ice\n#@/db_type\tuserdb\n#@/tick\t2000000000\n"+
+            "he bing yan zheng \t合并验证\tc=7 d=5 t=1999999999\n"+
+            "shan chu yan zheng \t删除验证\tc=-6 d=2 t=1999999999\n",Charsets.UTF_8)
+        WordLibrary.restore(connection,source,true)
+        val merged=WordLibrary.snapshot(connection,"合并后学习记录")
+        val content=root.resolve("${merged.id}/learning/rime_ice.userdb.txt").readLines(Charsets.UTF_8)
+        for((text,count) in listOf("合并验证" to 7,"删除验证" to -6)) {
+            val value=content.first { it.split('\t').getOrNull(1)==text }.split('\t')[2]
+            val fields=value.split(' ').filter { '=' in it }.associate { it.substringBefore('=') to it.substringAfter('=') }
+            assertEquals(count,fields.getValue("c").toInt())
+            assertTrue(fields.getValue("d").toDouble()>0)
+            assertEquals(2000000000L,fields.getValue("t").toLong())
+        }
+        assertTrue(content.contains("#@/tick\t2000000000"))
     }
 
     @Test fun privateAiDraftsStayOutOfSavedHistory() {

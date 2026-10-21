@@ -13,6 +13,8 @@ import kotlinx.serialization.encodeToString
 import org.fcitx.fcitx5.android.daemon.FcitxConnection
 import org.fcitx.fcitx5.android.utils.extract
 import java.io.*
+import java.nio.ByteBuffer
+import java.nio.charset.CodingErrorAction
 import java.util.zip.*
 
 object WordLibrary {
@@ -29,19 +31,36 @@ object WordLibrary {
     private val history get()=ExperienceData.root.resolve("input-history")
     private val rulesFile get()=ExperienceData.root.resolve("candidate-preferences.tsv")
     private fun hex(text:String)=text.toByteArray(Charsets.UTF_8).joinToString("") { "%02x".format(it.toInt() and 255) }
-    private fun unhex(text:String)=text.chunked(2).map { it.toInt(16).toByte() }.toByteArray().toString(Charsets.UTF_8)
-    fun rules():List<Rule> = rulesFile.takeIf { it.exists() }?.readLines(Charsets.UTF_8)?.mapNotNull {
-        val parts=it.split('\t')
-        if(parts.size!=4) null else Rule(unhex(parts[0]),unhex(parts[1]),unhex(parts[2]),parts[3])
-    }.orEmpty()
-    fun saveRules(items:List<Rule>) {
-        ExperienceData.write(rulesFile,items.joinToString("\n") { it.line }.let { if(it.isEmpty()) it else "$it\n" })
-        notifyRulesChanged()
+    private fun unhex(text:String):String {
+        require(text.length % 2 == 0 && text.all { it in "0123456789abcdefABCDEF" }) { "候选规则编码无效" }
+        val bytes=text.chunked(2).map { it.toInt(16).toByte() }.toByteArray()
+        return Charsets.UTF_8.newDecoder().onMalformedInput(CodingErrorAction.REPORT)
+            .onUnmappableCharacter(CodingErrorAction.REPORT).decode(ByteBuffer.wrap(bytes)).toString()
     }
-    fun setRule(word:Word,mode:String) {
+    internal fun parseRules(file:File):List<Rule> = file.takeIf { it.exists() }?.readLines(Charsets.UTF_8)?.filter { it.isNotEmpty() }?.map {
+        val parts=it.removeSuffix("\r").split('\t')
+        require(parts.size==4 && parts[3] in listOf("hide","lower")) { "候选规则格式无效" }
+        Rule(unhex(parts[0]),unhex(parts[1]),unhex(parts[2]),parts[3])
+    }.orEmpty()
+    fun rules():List<Rule> = parseRules(rulesFile)
+    private fun writeRules(items:List<Rule>) {
+        ExperienceData.write(rulesFile,items.joinToString("\n") { it.line }.let { if(it.isEmpty()) it else "$it\n" })
+    }
+    suspend fun updateRules(connection:FcitxConnection,update:(List<Rule>)->List<Rule>) {
+        connection.runOnReady { updateCandidatePreferences { writeRules(update(rules())) } }
+    }
+    suspend fun removeRule(connection:FcitxConnection,rule:Rule) = updateRules(connection) { current ->
+        current.filterNot { it.engine==rule.engine && it.reading==rule.reading && it.text==rule.text }
+    }
+    suspend fun setRule(connection:FcitxConnection,word:Word,mode:String) {
+        require(mode in listOf("hide","lower"))
         val reading=word.reading.replace(" ","").replace("'","").lowercase()
-        val rule=Rule("rime",reading,word.text,mode)
-        saveRules(rules().filterNot { it.engine==rule.engine && it.reading==rule.reading && it.text==rule.text }+rule)
+        val engines=connection.runOnReady { preferenceSchemas(word.dictionary) }
+        require(engines.isNotEmpty()) { "没有找到使用此词典的拼音方案" }
+        val added=engines.map { Rule("rime:$it",reading,word.text,mode) }
+        updateRules(connection) { current ->
+            current.filterNot { old -> added.any { it.engine==old.engine && it.reading==old.reading && it.text==old.text } }+added
+        }
     }
     private suspend fun operation(connection:FcitxConnection,name:String) {
         exchange.mkdirs();exchange.resolve("status.txt").delete()
@@ -66,12 +85,13 @@ object WordLibrary {
         ExperienceData.write(exchange.resolve("import.txt"),"$text\t${reading.replace("'"," ").replace("-"," ")}\t$weight\n")
         operation(connection,"import")
         val code=reading.replace(" ","").replace("'","").replace("-","")
-        saveRules(rules().filterNot { it.engine=="rime" && it.reading==code && it.text==text })
+        val engines=connection.runOnReady { preferenceSchemas(dictionary) }.map { "rime:$it" } + "rime"
+        updateRules(connection) { rules -> rules.filterNot { it.engine in engines && it.reading==code && it.text==text } }
         }
     }
     suspend fun forget(connection:FcitxConnection,word:Word) {
         add(connection,word.dictionary,word.text,word.reading,-1)
-        setRule(word,"hide")
+        setRule(connection,word,"hide")
     }
     fun snapshots():List<Snapshot> = history.listFiles()?.filter { it.isDirectory }?.mapNotNull {
         ExperienceData.read(it.resolve("metadata.json"))?.let { text -> ExperienceData.json.decodeFromString<Snapshot>(text) }
@@ -92,16 +112,10 @@ object WordLibrary {
     }
     suspend fun restore(connection:FcitxConnection,snapshot:Snapshot,merge:Boolean) = withContext(Dispatchers.IO) {
         access.withLock {
+        parseRules(history.resolve("${snapshot.id}/candidate-preferences.tsv"))
         val rollback=snapshotUnlocked(connection,"${if(merge) "合并" else "恢复"}前自动保存")
         try {
             operation(connection,"${if(merge) "merge" else "restore"}/${snapshot.id}")
-            if(merge) {
-                val old=history.resolve("${snapshot.id}/candidate-preferences.tsv")
-                if(old.exists()) {
-                    val current=rulesFile.takeIf { it.exists() }?.readLines(Charsets.UTF_8).orEmpty()
-                    ExperienceData.write(rulesFile,(current+old.readLines(Charsets.UTF_8)).distinctBy { it.substringBeforeLast('\t') }.joinToString("\n")+"\n")
-                }
-            }
         } catch(e:Exception) { operation(connection,"restore/${rollback.id}");throw e }
         finally { notifyRulesChanged() }
         }
@@ -118,6 +132,7 @@ object WordLibrary {
         try {
             folder.mkdirs();ZipInputStream(input).use { it.extract(folder) }
             require(folder.resolve("db").isDirectory && folder.resolve("words").isDirectory) { "文件不是输入习惯备份" }
+            parseRules(folder.resolve("candidate-preferences.tsv"))
             val meta=ExperienceData.json.decodeFromString<Snapshot>(folder.resolve("metadata.json").readText(Charsets.UTF_8)).copy(id=id)
             ExperienceData.write(folder.resolve("metadata.json"),ExperienceData.json.encodeToString(meta));return meta
         } catch(e:Exception) { folder.deleteRecursively();throw e }

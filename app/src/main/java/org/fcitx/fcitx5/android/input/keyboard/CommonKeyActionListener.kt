@@ -13,8 +13,6 @@ import org.fcitx.fcitx5.android.core.FcitxAPI
 import org.fcitx.fcitx5.android.core.FcitxKeyMapping
 import org.fcitx.fcitx5.android.daemon.launchOnReady
 import org.fcitx.fcitx5.android.data.prefs.AppPrefs
-import org.fcitx.fcitx5.android.input.broadcast.PreeditEmptyStateComponent
-import org.fcitx.fcitx5.android.input.candidates.horizontal.HorizontalCandidateComponent
 import org.fcitx.fcitx5.android.input.dependency.context
 import org.fcitx.fcitx5.android.input.dependency.fcitx
 import org.fcitx.fcitx5.android.input.dependency.inputMethodService
@@ -53,8 +51,6 @@ class CommonKeyActionListener :
     private val context by manager.context()
     private val fcitx by manager.fcitx()
     private val service by manager.inputMethodService()
-    private val preeditState: PreeditEmptyStateComponent by manager.must()
-    private val horizontalCandidate: HorizontalCandidateComponent by manager.must()
     private val windowManager: InputWindowManager by manager.must()
 
     private var lastPickerType by AppPrefs.getInstance().internal.lastPickerType
@@ -66,13 +62,14 @@ class CommonKeyActionListener :
 
     private var backspaceSwipeState = Stopped
     private var backspaceStartedWithPreedit = false
+    private var backspaceTarget = -1L
 
     // there should be a new fcitx API for this
     private suspend fun FcitxAPI.commitAndReset(target: Long) {
         service.awaitInputEvents(this)
         if (inputMethodEntryCached.languageCode.startsWith("zh")) {
             // Chinese: select 1st candidate, except prediction candidates
-            if (clientPreeditCached.isNotEmpty() || inputPanelCached.preedit.isNotEmpty()) {
+            if (hasPreedit()) {
                 // preedit not empty, maybe there are candidates to select ...
                 select(0)
             }
@@ -98,9 +95,10 @@ class CommonKeyActionListener :
             val target = service.inputActionToken
             when (action) {
                 is KeyAction.MacroAction -> {
-                    val preeditOnly = backspaceStartedWithPreedit || !preeditState.isEmpty
                     service.postInputJob(target) {
+                        val preeditOnly = (backspaceTarget == target && backspaceStartedWithPreedit) || hasPreedit()
                         for (step in action.steps) {
+                            if (!service.isCurrentInputTarget(target)) break
                             when (step.action) {
                                 "privacy" -> service.onInputTarget(target) { service.togglePrivacyMode() }
                                 "clear" -> {
@@ -130,10 +128,15 @@ class CommonKeyActionListener :
                     }
                 }
                 is KeyAction.BeginBackspaceAction -> {
-                    backspaceSwipeState = Stopped
-                    backspaceStartedWithPreedit = !preeditState.isEmpty
+                    service.postInputJob(target) {
+                        backspaceTarget = target
+                        backspaceSwipeState = Stopped
+                        backspaceStartedWithPreedit = hasPreedit()
+                    }
                 }
-                is KeyAction.EndBackspaceAction -> backspaceStartedWithPreedit = false
+                is KeyAction.EndBackspaceAction -> service.postInputJob(target) {
+                    if (backspaceTarget == target) backspaceStartedWithPreedit = false
+                }
                 is FcitxKeyAction -> service.postInputJob(target) {
                     sendKey(action.act, action.states.states, action.code)
                     if (inputMethodEntryCached.uniqueName == "anthy") {
@@ -141,9 +144,10 @@ class CommonKeyActionListener :
                     }
                 }
                 is SymAction -> {
-                    val preeditOnly = backspaceStartedWithPreedit && action.sym.sym == FcitxKeyMapping.FcitxKey_BackSpace
                     service.postInputJob(target) {
-                        if (!preeditOnly || clientPreeditCached.isNotEmpty() || inputPanelCached.preedit.isNotEmpty()) {
+                        val preeditOnly = backspaceTarget == target && backspaceStartedWithPreedit &&
+                            action.sym.sym == FcitxKeyMapping.FcitxKey_BackSpace
+                        if (!preeditOnly || hasPreedit()) {
                             sendKey(action.sym, action.states)
                             if (inputMethodEntryCached.uniqueName == "anthy") {
                                 sendKey(action.sym, action.states, up = true)
@@ -188,33 +192,39 @@ class CommonKeyActionListener :
                 }
                 is ShowInputMethodPickerAction -> showInputMethodPicker()
                 is MoveSelectionAction -> {
-                    when (backspaceSwipeState) {
-                        Stopped -> {
-                            backspaceSwipeState = if (
-                                preeditState.isEmpty &&
-                                horizontalCandidate.adapter.total <= 0 // total is -1 on initialization
-                            ) {
-                                service.applySelectionOffset(action.start, action.end)
-                                Selection
-                            } else {
-                                Reset
+                    service.postInputJob(target) {
+                        service.awaitInputEvents(this)
+                        when (if (backspaceTarget == target) backspaceSwipeState else Stopped) {
+                            Stopped -> {
+                                val beganWithPreedit = backspaceTarget == target && backspaceStartedWithPreedit
+                                backspaceTarget = target
+                                backspaceSwipeState = if (!(beganWithPreedit || hasPreedit()) &&
+                                    getCandidates(0, 1).isEmpty()) {
+                                    service.onInputTarget(target) { service.applySelectionOffset(action.start, action.end) }
+                                    Selection
+                                } else {
+                                    Reset
+                                }
                             }
+                            Selection -> {
+                                service.onInputTarget(target) { service.applySelectionOffset(action.start, action.end) }
+                            }
+                            Reset -> {}
                         }
-                        Selection -> {
-                            service.applySelectionOffset(action.start, action.end)
-                        }
-                        Reset -> {}
                     }
                 }
                 is DeleteSelectionAction -> {
-                    when (backspaceSwipeState) {
-                        Stopped -> {}
-                        Selection -> service.deleteSelection()
-                        Reset -> if (action.totalCnt < 0) { // swipe left
-                            service.postInputJob(target) { reset() }
+                    service.postInputJob(target) {
+                        service.awaitInputEvents(this)
+                        when (if (backspaceTarget == target) backspaceSwipeState else Stopped) {
+                            Stopped -> {}
+                            Selection -> service.onInputTarget(target) { service.deleteSelection() }
+                            Reset -> if (action.totalCnt < 0) { // swipe left
+                                reset()
+                            }
                         }
+                        backspaceSwipeState = Stopped
                     }
-                    backspaceSwipeState = Stopped
                 }
                 is PickerSwitchAction -> {
                     // update lastSymbolType only when specified explicitly

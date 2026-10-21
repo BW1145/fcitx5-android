@@ -4,11 +4,13 @@
 #include <fstream>
 #include <filesystem>
 #include <map>
+#include <vector>
 #include <sstream>
 #include <cctype>
 #include <cerrno>
 #include <cstdint>
 #include <sys/stat.h>
+#include <fcitx-utils/utf8.h>
 
 namespace fcitx {
 inline std::string preferenceHex(const std::string &s) {
@@ -26,18 +28,42 @@ inline std::string preferenceContext(const std::string &s) {
 }
 class CandidatePreferences {
 public:
+    using Rules = std::map<std::string,int>;
+    static Rules read(const std::filesystem::path &path) {
+        Rules rules;
+        std::ifstream input(path);std::string line;
+        while(std::getline(input,line)) {
+            if (!line.empty() && line.back()=='\r') line.pop_back();
+            if (line.empty()) continue;
+            std::vector<std::string> fields;
+            std::istringstream row(line);std::string field;
+            while (std::getline(row,field,'\t')) fields.push_back(field);
+            if (fields.size()!=4 || (fields[3]!="hide" && fields[3]!="lower"))
+                throw std::runtime_error("Invalid candidate preference row");
+            for (size_t i=0;i<3;++i) {
+                const auto &hex=fields[i];std::string decoded;
+                if (hex.size()%2) throw std::runtime_error("Invalid candidate preference encoding");
+                for (size_t j=0;j<hex.size();j+=2) {
+                    if (!std::isxdigit(static_cast<unsigned char>(hex[j])) || !std::isxdigit(static_cast<unsigned char>(hex[j+1])))
+                        throw std::runtime_error("Invalid candidate preference encoding");
+                    decoded += static_cast<char>(std::stoi(hex.substr(j,2),nullptr,16));
+                }
+                if (!utf8::validate(decoded)) throw std::runtime_error("Invalid candidate preference text");
+                fields[i]=preferenceHex(decoded);
+            }
+            rules[fields[0]+"\t"+fields[1]+"\t"+fields[2]]=fields[3]=="hide"?1:2;
+        }
+        if (input.bad() || (std::filesystem::exists(path) && !input.eof()))
+            throw std::runtime_error("Unable to read candidate preferences");
+        return rules;
+    }
     explicit CandidatePreferences(std::filesystem::path path) : path_(std::move(path)) {}
     // All frontend contexts run on the Fcitx thread and share the same file cache.
     bool load(bool force=false) {
         auto version=stamp();
         auto &value=cache();
         if(!force && value.loaded && value.version==version) return false;
-        std::map<std::string,int> rules;
-        std::ifstream input(path_);std::string line;
-        while(std::getline(input,line)) {
-            auto split=line.rfind('\t');
-            if(split!=std::string::npos) rules[line.substr(0,split)]=line.substr(split+1)=="hide"?1:2;
-        }
+        auto rules=read(path_);
         value.rules=std::move(rules);value.version=version;value.loaded=true;
         return true;
     }
@@ -53,17 +79,44 @@ public:
         return found!=rules.end() && found->first.compare(0,prefix.size(),prefix)==0;
     }
     void set(const std::string &scope,const std::string &word,int mode) {
-        load(true);auto &value=cache();value.rules[scope+"\t"+preferenceHex(word)]=mode;
+        load(true);auto rules=cache().rules;rules[scope+"\t"+preferenceHex(word)]=mode;
+        write(std::move(rules));
+    }
+    void merge(const Rules &other) {
+        load(true);auto rules=cache().rules;
+        rules.insert(other.begin(),other.end()); // Current choices win conflicts.
+        write(std::move(rules));
+    }
+    void migrateScope(const std::string &from,const std::string &to) {
+        if (!hasScope(from)) return;
+        auto rules=cache().rules;
+        const auto prefix=from+"\t";
+        for (auto it=rules.lower_bound(prefix);it!=rules.end() && it->first.compare(0,prefix.size(),prefix)==0;) {
+            rules.emplace(to+it->first.substr(from.size()),it->second);
+            it=rules.erase(it);
+        }
+        write(std::move(rules));
+    }
+    void migrateWord(const std::string &from,const std::string &to,const std::string &word) {
+        const auto suffix="\t"+preferenceHex(word);
+        const auto found=cache().rules.find(from+suffix);
+        if (found==cache().rules.end()) return;
+        auto rules=cache().rules;
+        rules.emplace(to+suffix,found->second);rules.erase(from+suffix);
+        write(std::move(rules));
+    }
+private:
+    void write(Rules rules) {
         const auto target=path_;std::filesystem::create_directories(target.parent_path());
         auto temp=target;temp+=".tmp";
         std::ofstream output(temp,std::ios::trunc);
-        for(const auto &[key,mode]:value.rules) output<<key<<'\t'<<(mode==1?"hide":"lower")<<'\n';
+        for(const auto &[key,mode]:rules) output<<key<<'\t'<<(mode==1?"hide":"lower")<<'\n';
         output.close();
         if(!output) throw std::runtime_error("Unable to save candidate preferences");
         std::filesystem::rename(temp,target);
+        auto &value=cache();value.rules=std::move(rules);value.loaded=true;
         value.version=stamp();
     }
-private:
     struct Stamp {
         bool exists=false;
         int64_t modified=0;

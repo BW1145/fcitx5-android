@@ -182,6 +182,7 @@ jobject candidateEntityToObject(JNIEnv *env, const CandidateEntity &c) {
                               *JString(env, c.comment),
                               c.spaceBetweenComment
     );
+    env->SetLongField(obj, GlobalRef->CandidateRevision, static_cast<jlong>(c.revision));
     return obj;
 }
 

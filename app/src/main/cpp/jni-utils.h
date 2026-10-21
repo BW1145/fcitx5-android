@@ -108,6 +108,7 @@ public:
     jclass Fcitx;
     jmethodID ShowToast;
     jmethodID HandleFcitxEvent;
+    jmethodID HandleFcitxInputEvent;
 
     jclass InputMethodEntry;
     jmethodID InputMethodEntryInit;
@@ -143,6 +144,7 @@ public:
 
     jclass Candidate;
     jmethodID CandidateInit;
+    jfieldID CandidateRevision;
 
     explicit GlobalRefSingleton(JavaVM *jvm_) : jvm(jvm_) {
         JNIEnv *env;
@@ -161,6 +163,7 @@ public:
         Fcitx = reinterpret_cast<jclass>(env->NewGlobalRef(env->FindClass("org/fcitx/fcitx5/android/core/Fcitx")));
         ShowToast = env->GetStaticMethodID(Fcitx, "showToast", "(Ljava/lang/String;)V");
         HandleFcitxEvent = env->GetStaticMethodID(Fcitx, "handleFcitxEvent", "(I[Ljava/lang/Object;)V");
+        HandleFcitxInputEvent = env->GetStaticMethodID(Fcitx, "handleFcitxInputEvent", "(JI[Ljava/lang/Object;)V");
 
         InputMethodEntry = reinterpret_cast<jclass>(env->NewGlobalRef(env->FindClass("org/fcitx/fcitx5/android/core/InputMethodEntry")));
         InputMethodEntryInit = env->GetMethodID(InputMethodEntry, "<init>", "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Z)V");
@@ -196,6 +199,7 @@ public:
 
         Candidate = reinterpret_cast<jclass>(env->NewGlobalRef(env->FindClass("org/fcitx/fcitx5/android/core/CandidateWord")));
         CandidateInit = env->GetMethodID(Candidate, "<init>", "(Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Z)V");
+        CandidateRevision = env->GetFieldID(Candidate, "revision", "J");
     }
 
     [[nodiscard]] JEnv AttachEnv() const { return JEnv(jvm); }

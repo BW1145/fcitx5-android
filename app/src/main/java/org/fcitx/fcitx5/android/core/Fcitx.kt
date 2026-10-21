@@ -43,6 +43,13 @@ class Fcitx(private val context: Context) : FcitxAPI, FcitxLifecycleOwner {
     override suspend fun enqueueInputBarrier(enqueue: () -> Unit) =
         withFcitxContext { enqueue() }
 
+    override suspend fun setInputTarget(target: Long) = withFcitxContext {
+        setAndroidInputTarget(target)
+        nativeInputTarget = target
+        publishedCandidateRevision = -1L
+    }
+    override val candidateRevisionCached get() = publishedCandidateRevision
+
     override val isReady
         get() = lifecycle.currentState == FcitxLifecycle.State.READY
 
@@ -87,6 +94,11 @@ class Fcitx(private val context: Context) : FcitxAPI, FcitxLifecycleOwner {
     override suspend fun save() = withFcitxContext { saveFcitxState() }
     override suspend fun reloadConfig() = withFcitxContext { reloadFcitxConfig() }
     override suspend fun refreshCandidatePreferences() = withFcitxContext { refreshFcitxCandidatePreferences() }
+    override suspend fun updateCandidatePreferences(update: () -> Unit) = withFcitxContext {
+        update()
+        refreshFcitxCandidatePreferences()
+    }
+    override suspend fun preferenceSchemas(dictionary: String) = withFcitxContext { getRimePreferenceSchemas(dictionary) }
 
     override suspend fun sendKey(
         key: String,
@@ -113,7 +125,11 @@ class Fcitx(private val context: Context) : FcitxAPI, FcitxLifecycleOwner {
         withFcitxContext { sendKeySymToFcitx(sym.sym, states.toInt(), code, up, timestamp) }
 
     override suspend fun select(idx: Int): Boolean = withFcitxContext { selectCandidate(idx) }
+    override suspend fun select(idx: Int, candidate: CandidateWord): Boolean = withFcitxContext {
+        candidateIsCurrent(idx, candidate) && selectCandidate(idx)
+    }
     override suspend fun isEmpty(): Boolean = withFcitxContext { isInputPanelEmpty() }
+    override suspend fun hasPreedit(): Boolean = withFcitxContext { hasInputPreedit() }
     override suspend fun reset() = withFcitxContext { resetInputContext() }
     override suspend fun moveCursor(position: Int) = withFcitxContext {
         if (inputMethodEntryCached.uniqueName != "rime") {
@@ -213,8 +229,17 @@ class Fcitx(private val context: Context) : FcitxAPI, FcitxLifecycleOwner {
     override suspend fun getCandidateActions(idx: Int): Array<CandidateAction> =
         withFcitxContext { getFcitxCandidateActions(idx) ?: emptyArray() }
 
+    override suspend fun getCandidateActions(idx: Int, candidate: CandidateWord): Array<CandidateAction> =
+        withFcitxContext { if (candidateIsCurrent(idx, candidate)) getFcitxCandidateActions(idx) ?: emptyArray() else emptyArray() }
+
     override suspend fun triggerCandidateAction(idx: Int, actionIdx: Int) =
         withFcitxContext { triggerFcitxCandidateAction(idx, actionIdx) }
+
+    override suspend fun triggerCandidateAction(idx: Int, actionIdx: Int, candidate: CandidateWord) =
+        withFcitxContext { if (candidateIsCurrent(idx, candidate)) triggerFcitxCandidateAction(idx, actionIdx) }
+
+    private fun candidateIsCurrent(idx: Int, candidate: CandidateWord) =
+        candidateMatches(idx, candidate.text, candidate.revision)
 
     override suspend fun setCandidatePagingMode(mode: Int) =
         withFcitxContext { setFcitxCandidatePagingMode(mode) }
@@ -235,6 +260,8 @@ class Fcitx(private val context: Context) : FcitxAPI, FcitxLifecycleOwner {
         get() = lifecycleRegistry
 
     private companion object JNI {
+        private var nativeInputTarget = 0L
+        @Volatile private var publishedCandidateRevision = -1L
 
         /**
          * called from native-lib
@@ -309,6 +336,12 @@ class Fcitx(private val context: Context) : FcitxAPI, FcitxLifecycleOwner {
 
         @JvmStatic
         external fun resetInputContext()
+        @JvmStatic
+        external fun hasInputPreedit(): Boolean
+        @JvmStatic
+        external fun setAndroidInputTarget(target: Long)
+        @JvmStatic
+        external fun candidateMatches(idx: Int, text: String, revision: Long): Boolean
 
         @JvmStatic
         external fun repositionCursor(position: Int)
@@ -407,6 +440,8 @@ class Fcitx(private val context: Context) : FcitxAPI, FcitxLifecycleOwner {
         external fun setFcitxCandidatePagingMode(mode: Int)
         @JvmStatic
         external fun refreshFcitxCandidatePreferences()
+        @JvmStatic
+        external fun getRimePreferenceSchemas(dictionary: String): Array<String>
 
         @JvmStatic
         external fun offsetFcitxCandidatePage(delta: Int)
@@ -431,7 +466,18 @@ class Fcitx(private val context: Context) : FcitxAPI, FcitxLifecycleOwner {
             publishEvent(event)
         }
 
+        @JvmStatic
+        fun handleFcitxInputEvent(target: Long, type: Int, params: Array<Any>) {
+            if (target != nativeInputTarget) return
+            publishEvent(FcitxEvent.create(type, params).also { it.inputTarget = target })
+        }
+
         private fun publishEvent(event: FcitxEvent<*>) {
+            when (event) {
+                is FcitxEvent.CandidateListEvent -> publishedCandidateRevision = event.data.candidates.firstOrNull()?.revision ?: -1L
+                is FcitxEvent.PagedCandidateEvent -> publishedCandidateRevision = event.data.candidates.firstOrNull()?.revision ?: -1L
+                else -> Unit
+            }
             fcitxEventHandlers.forEach { it.invoke(event) }
             eventFlow_.tryEmit(event)
         }

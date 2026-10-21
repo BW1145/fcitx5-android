@@ -7,6 +7,7 @@ import org.fcitx.fcitx5.android.data.prefs.AppPrefs
 import org.fcitx.fcitx5.android.data.theme.ThemeManager
 import org.fcitx.fcitx5.android.ui.common.PaddingPreferenceFragment
 import org.fcitx.fcitx5.android.utils.navigateWithAnim
+import org.fcitx.fcitx5.android.ui.main.settings.behavior.AdvancedSettingsFragment
 
 object SettingFocus { var key: String? = null }
 
@@ -50,6 +51,9 @@ class SettingsSearchFragment : PaddingPreferenceFragment() {
             })
             results=PreferenceCategory(ctx).apply { title="设置位置" }
             addPreference(results)
+        }
+        AdvancedSettingsFragment.userDataEntries.forEach { (key, title) ->
+            entries += Entry(ctx.getString(title), "用户数据、配置与备份迁移", key, SettingsRoute.Advanced, "高级与备份")
         }
         show("")
     }

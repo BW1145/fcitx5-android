@@ -126,7 +126,7 @@ class PanelEditorSession(private val service: FcitxInputMethodService, private v
     private suspend fun FcitxAPI.commitAndReset(token: Long) {
         service.awaitInputEvents(this)
         if (inputMethodEntryCached.languageCode.startsWith("zh")) {
-            if (clientPreeditCached.isNotEmpty() || inputPanelCached.preedit.isNotEmpty()) select(0)
+            if (hasPreedit()) select(0)
         } else {
             edit(token) { finishComposing() }
         }
@@ -171,6 +171,7 @@ class PanelEditorSession(private val service: FcitxInputMethodService, private v
     }
 
     private suspend fun FcitxAPI.macro(token: Long, steps: List<KeyMacros.Step>) {
+        val preeditOnly = backspaceStartedWithPreedit || hasPreedit()
         for (step in steps) {
             if (!accepts(token)) return
             if(step.action=="privacy") {
@@ -180,7 +181,7 @@ class PanelEditorSession(private val service: FcitxInputMethodService, private v
             if (step.action == "clear") {
                 reset()
                 service.awaitInputEvents(this)
-                edit(token) { clear() }
+                if (!preeditOnly) edit(token) { clear() }
                 selecting = false
             } else {
                 commitAndReset(token)
@@ -212,7 +213,7 @@ class PanelEditorSession(private val service: FcitxInputMethodService, private v
             is KeyAction.CommitAction -> commitLiteral(action.text)
             is KeyAction.MacroAction -> enqueue { token -> macro(token, action.steps) }
             is KeyAction.BeginBackspaceAction -> enqueue {
-                backspaceStartedWithPreedit = clientPreeditCached.isNotEmpty() || inputPanelCached.preedit.isNotEmpty()
+                backspaceStartedWithPreedit = hasPreedit()
                 selecting = false
                 swipeHadPreedit = backspaceStartedWithPreedit
             }
@@ -237,7 +238,7 @@ class PanelEditorSession(private val service: FcitxInputMethodService, private v
             is KeyAction.SymAction -> {
                 enqueue {
                     val preeditOnly = backspaceStartedWithPreedit && action.sym.sym == FcitxKeyMapping.FcitxKey_BackSpace
-                    if (!preeditOnly || clientPreeditCached.isNotEmpty() || inputPanelCached.preedit.isNotEmpty()) {
+                    if (!preeditOnly || hasPreedit()) {
                         sendKey(action.sym, action.states)
                         if (inputMethodEntryCached.uniqueName == "anthy") sendKey(action.sym, action.states, up = true)
                     }

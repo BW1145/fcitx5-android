@@ -58,7 +58,7 @@ class WordLibraryActivity : ExperienceActivity() {
         val rules=WordLibrary.rules().filter { (it.text+it.reading).contains(q,true) }
         if(rules.isNotEmpty()) rows.addView(label("主动调整的候选"))
         rules.forEach { rule -> rows.addView(button("${rule.text} · ${if(rule.mode=="hide") "已忘记" else "已降低优先级"}\n${rule.engine} · ${if(rule.reading=="japanese") "日语候选" else rule.reading.replace("predict:","联想：")}") {
-            AlertDialog.Builder(this).setMessage("恢复“${rule.text}”的默认候选行为？").setPositiveButton("恢复") { _,_->WordLibrary.saveRules(WordLibrary.rules()-rule);render() }.setNegativeButton("取消",null).show()
+            AlertDialog.Builder(this).setMessage("恢复“${rule.text}”的默认候选行为？").setPositiveButton("恢复") { _,_->task { WordLibrary.removeRule(connection,rule);render() } }.setNegativeButton("取消",null).show()
         }) }
         rows.addView(label("个人学习词条"))
         val found=words.filter { (it.text+it.reading).contains(q,true) }
@@ -66,7 +66,7 @@ class WordLibraryActivity : ExperienceActivity() {
         found.take(200).forEach { word -> rows.addView(button("${word.text}\n${word.reading}") {
             AlertDialog.Builder(this).setTitle(word.text).setItems(arrayOf("忘记","降低优先级","学习信息")) { _,i -> when(i) {
                 0 -> task { WordLibrary.forget(connection,word);refresh() }
-                1 -> { WordLibrary.setRule(word,"lower");render() }
+                1 -> task { WordLibrary.setRule(connection,word,"lower");render() }
                 2 -> AlertDialog.Builder(this).setMessage("词典：${word.dictionary}\n读音：${word.reading}\n学习权重：${word.weight}\n权重是输入引擎的内部记录，用于排序。").setPositiveButton("知道了",null).show()
             } }.show()
         }) }

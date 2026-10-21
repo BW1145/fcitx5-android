@@ -24,16 +24,19 @@ public:
     Instance *instance() { return instance_; }
 
     void updateCandidateList(const std::vector<CandidateEntity> &candidates, int total);
-    void commitString(const std::string &str, int cursor);
-    void updateClientPreedit(const Text &clientPreedit);
+    void commitString(const std::string &str, int cursor, int64_t target);
+    void updateClientPreedit(const Text &clientPreedit, int64_t target);
     void updateInputPanel(const Text &preedit, const Text &auxUp, const Text &auxDown, const std::vector<CandidateActionEntity> &tabs);
     void releaseInputContext(int uid);
     void updatePagedCandidate(const PagedCandidateEntity &paged);
 
     void keyEvent(const Key &key, bool isRelease, int timestamp);
-    void forwardKey(const Key &key, bool isRelease);
+    void forwardKey(const Key &key, bool isRelease, int64_t target);
     bool selectCandidate(int idx);
     bool isInputPanelEmpty();
+    bool hasInputPreedit();
+    void setInputTarget(int64_t target);
+    bool candidateMatches(int idx, const std::string &text, int64_t revision);
     void resetInputContext();
     void repositionCursor(int idx);
     void focusInputContext(bool focus);
@@ -45,7 +48,7 @@ public:
     std::vector<CandidateActionEntity> getCandidateActions(int idx);
     void triggerCandidateAction(int idx, int actionIdx);
     void triggerTabAction(int idx);
-    void deleteSurrounding(int before, int after);
+    void deleteSurrounding(int before, int after, int64_t target);
     void showToast(const std::string &s);
     void setCandidatePagingMode(int mode);
     void refreshCandidatePreferences();
@@ -67,6 +70,9 @@ private:
     FCITX_ADDON_EXPORT_FUNCTION(AndroidFrontend, keyEvent);
     FCITX_ADDON_EXPORT_FUNCTION(AndroidFrontend, selectCandidate);
     FCITX_ADDON_EXPORT_FUNCTION(AndroidFrontend, isInputPanelEmpty);
+    FCITX_ADDON_EXPORT_FUNCTION(AndroidFrontend, hasInputPreedit);
+    FCITX_ADDON_EXPORT_FUNCTION(AndroidFrontend, setInputTarget);
+    FCITX_ADDON_EXPORT_FUNCTION(AndroidFrontend, candidateMatches);
     FCITX_ADDON_EXPORT_FUNCTION(AndroidFrontend, resetInputContext);
     FCITX_ADDON_EXPORT_FUNCTION(AndroidFrontend, repositionCursor);
     FCITX_ADDON_EXPORT_FUNCTION(AndroidFrontend, focusInputContext);
@@ -103,13 +109,13 @@ private:
     int pagingMode_;
 
     CandidateListCallback candidateListCallback = [](const std::vector<CandidateEntity> &, const int) {};
-    CommitStringCallback commitStringCallback = [](const std::string &, const int) {};
-    ClientPreeditCallback preeditCallback = [](const Text &) {};
+    CommitStringCallback commitStringCallback = [](const std::string &, const int, int64_t) {};
+    ClientPreeditCallback preeditCallback = [](const Text &, int64_t) {};
     InputPanelCallback inputPanelCallback = [](const fcitx::Text &, const fcitx::Text &, const Text &, const std::vector<CandidateActionEntity> &) {};
-    KeyEventCallback keyEventCallback = [](const int, const uint32_t, const uint32_t, const bool, const int) {};
+    KeyEventCallback keyEventCallback = [](const int, const uint32_t, const uint32_t, const bool, const int, int64_t) {};
     InputMethodChangeCallback imChangeCallback = [](const InputMethodStatus &) {};
     StatusAreaUpdateCallback statusAreaUpdateCallback = [](const std::vector<ActionEntity> &, const InputMethodStatus &) {};
-    DeleteSurroundingCallback deleteSurroundingCallback = [](const int, const int) {};
+    DeleteSurroundingCallback deleteSurroundingCallback = [](const int, const int, int64_t) {};
     ToastCallback toastCallback = [](const std::string &) {};
     PagedCandidateCallback pagedCandidateCallback = [](const PagedCandidateEntity &) {};
     SwitchInputMethodCallback switchInputMethodCallback = [](const int, const std::string &) {};

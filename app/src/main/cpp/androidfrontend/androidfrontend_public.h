@@ -13,13 +13,13 @@
 #include "../helper-types.h"
 
 typedef std::function<void(const std::vector<CandidateEntity> &, const int)> CandidateListCallback;
-typedef std::function<void(const std::string &, const int)> CommitStringCallback;
-typedef std::function<void(const fcitx::Text &)> ClientPreeditCallback;
+typedef std::function<void(const std::string &, const int, int64_t)> CommitStringCallback;
+typedef std::function<void(const fcitx::Text &, int64_t)> ClientPreeditCallback;
 typedef std::function<void(const fcitx::Text &, const fcitx::Text &, const fcitx::Text &, const std::vector<CandidateActionEntity> &)> InputPanelCallback;
-typedef std::function<void(const int, const uint32_t, const uint32_t, const bool, const int)> KeyEventCallback;
+typedef std::function<void(const int, const uint32_t, const uint32_t, const bool, const int, int64_t)> KeyEventCallback;
 typedef std::function<void(const InputMethodStatus &)> InputMethodChangeCallback;
 typedef std::function<void(const std::vector<ActionEntity> &, const InputMethodStatus &)> StatusAreaUpdateCallback;
-typedef std::function<void(const int, const int)> DeleteSurroundingCallback;
+typedef std::function<void(const int, const int, int64_t)> DeleteSurroundingCallback;
 typedef std::function<void(const std::string &)> ToastCallback;
 typedef std::function<void(const PagedCandidateEntity &)> PagedCandidateCallback;
 typedef std::function<void(const int, const std::string &)> SwitchInputMethodCallback;
@@ -32,6 +32,9 @@ FCITX_ADDON_DECLARE_FUNCTION(AndroidFrontend, selectCandidate,
 
 FCITX_ADDON_DECLARE_FUNCTION(AndroidFrontend, isInputPanelEmpty,
                              bool())
+FCITX_ADDON_DECLARE_FUNCTION(AndroidFrontend, hasInputPreedit, bool())
+FCITX_ADDON_DECLARE_FUNCTION(AndroidFrontend, setInputTarget, void(int64_t))
+FCITX_ADDON_DECLARE_FUNCTION(AndroidFrontend, candidateMatches, bool(int, const std::string &, int64_t))
 
 FCITX_ADDON_DECLARE_FUNCTION(AndroidFrontend, resetInputContext,
                              void())

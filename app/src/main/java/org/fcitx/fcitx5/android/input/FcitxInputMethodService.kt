@@ -53,6 +53,7 @@ import kotlinx.coroutines.launch
 import org.fcitx.fcitx5.android.R
 import org.fcitx.fcitx5.android.core.CapabilityFlags
 import org.fcitx.fcitx5.android.core.FcitxAPI
+import org.fcitx.fcitx5.android.core.CandidateWord
 import org.fcitx.fcitx5.android.core.FcitxEvent
 import org.fcitx.fcitx5.android.core.FcitxKeyMapping
 import org.fcitx.fcitx5.android.core.FormattedText
@@ -106,6 +107,9 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         event is FcitxEvent.KeyEvent || event is FcitxEvent.IMChangeEvent ||
         event is FcitxEvent.SwitchInputMethodEvent
 
+    private fun isEditorEvent(event: FcitxEvent<*>) = event is FcitxEvent.CommitStringEvent ||
+        event is FcitxEvent.ClientPreeditEvent || event is FcitxEvent.DeleteSurroundingEvent || event is FcitxEvent.KeyEvent
+
     private val inputEventListener: (FcitxEvent<*>) -> Unit = {
         if (isServiceEvent(it)) inputEvents.trySend(InputDispatch.Event(it))
     }
@@ -135,9 +139,9 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         completion.await()
     }
 
-    fun selectCandidate(index: Int) {
+    fun selectCandidate(index: Int, candidate: CandidateWord? = null) {
         if (panelEditorTarget?.active == false) return
-        postInputJob { select(index) }
+        postInputJob { if (candidate == null) select(index) else select(index, candidate) }
     }
 
     fun movePreeditCursor(position: Int) {
@@ -339,10 +343,11 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         if (previous == null) finishComposing()
         inputActionToken++
         panelEditorTarget = panel
+        val target = inputActionToken
         panelEditorConnection = currentInputConnection
         panelEditorAppSession = editorSession
         postFcitxJob {
-            reset()
+            setInputTarget(target)
             awaitInputEvents(this)
             withContext(Dispatchers.Main) {
                 if (panelEditorTarget === panel) panel.ready(session)
@@ -352,10 +357,11 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
 
     fun endPanelEditing(panel: PanelEditorSession, session: Long, result: String?, replaceDraft: Boolean = false) {
         inputActionToken++
+        val target = inputActionToken
         val originalConnection = panelEditorConnection
         val originalEditor = panelEditorAppSession
         postFcitxJob {
-            reset()
+            setInputTarget(target)
             awaitInputEvents(this)
             withContext(Dispatchers.Main) {
                 if (panelEditorTarget === panel && panel.closed(session)) {
@@ -375,6 +381,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         panelEditorTarget?.takeIf { it.active }?.handleAction(action) == true
 
     private fun handleFcitxEvent(event: FcitxEvent<*>) {
+        if (isEditorEvent(event) && !isCurrentInputTarget(event.inputTarget)) return
         if (panelEditorTarget?.handle(event) == true) return
         when (event) {
             is FcitxEvent.CommitStringEvent -> {
@@ -910,6 +917,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         editorSession++
         inputActionToken++
         closeContentSearch()
+        val target = inputActionToken
         // update selection as soon as possible
         // sometimes when restarting input, onUpdateSelection happens before onStartInput, and
         // initialSel{Start,End} is outdated. but it's the client app's responsibility to send
@@ -930,6 +938,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
                 // try focus out before changing CapabilityFlags,
                 // to avoid confusing state of different text fields
             }
+            setInputTarget(target)
             // EditorInfo can be different in onStartInput and onStartInputView,
             // especially in browsers
             setCapFlags(CapabilityFlags(flags.flags or if (org.fcitx.fcitx5.android.data.PrivacyMode.enabled)

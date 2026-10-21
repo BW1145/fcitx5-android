@@ -113,6 +113,7 @@ public:
     std::string text;
     std::string comment;
     bool spaceBetweenComment;
+    int64_t revision = 0;
 
     explicit CandidateEntity(std::string label, std::string text, std::string comment) :
             label(std::move(label)),

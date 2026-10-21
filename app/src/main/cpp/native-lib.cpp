@@ -46,6 +46,7 @@
 #include "nativestreambuf.h"
 #include "helper-types.h"
 #include "object-conversion.h"
+#include "personal-rime-public.h"
 
 
 class Fcitx {
@@ -121,6 +122,18 @@ public:
 
     bool isInputPanelEmpty() {
         return p_frontend->call<fcitx::IAndroidFrontend::isInputPanelEmpty>();
+    }
+
+    bool hasInputPreedit() {
+        return p_frontend->call<fcitx::IAndroidFrontend::hasInputPreedit>();
+    }
+
+    void setInputTarget(int64_t target) {
+        p_frontend->call<fcitx::IAndroidFrontend::setInputTarget>(target);
+    }
+
+    bool candidateMatches(int idx, const std::string &text, int64_t revision) {
+        return p_frontend->call<fcitx::IAndroidFrontend::candidateMatches>(idx, text, revision);
     }
 
     void resetInputContext() {
@@ -425,6 +438,9 @@ public:
     void refreshCandidatePreferences() {
         p_frontend->call<fcitx::IAndroidFrontend::refreshCandidatePreferences>();
     }
+    std::vector<std::string> preferenceSchemas(const std::string &dictionary) {
+        return p_instance->addonManager().addon("rime")->call<fcitx::IRimeEngine::personalSchemas>(dictionary);
+    }
 
     void triggerCandidateAction(int idx, int actionIdx) {
         return p_frontend->call<fcitx::IAndroidFrontend::triggerCandidateAction>(idx, actionIdx);
@@ -610,19 +626,19 @@ Java_org_fcitx_fcitx5_android_core_Fcitx_startupFcitx(
         env->SetObjectArrayElement(vararg, 1, *candidatesArray);
         env->CallStaticVoidMethod(GlobalRef->Fcitx, GlobalRef->HandleFcitxEvent, 0, *vararg);
     };
-    auto commitStringCallback = [](const std::string &str, const int cursor) {
+    auto commitStringCallback = [](const std::string &str, const int cursor, int64_t target) {
         auto env = GlobalRef->AttachEnv();
         auto stringCursor = JRef(env, env->NewObject(GlobalRef->Integer, GlobalRef->IntegerInit, cursor));
         auto vararg = JRef<jobjectArray>(env, env->NewObjectArray(2, GlobalRef->Object, nullptr));
         env->SetObjectArrayElement(vararg, 0, JString(env, str));
         env->SetObjectArrayElement(vararg, 1, stringCursor);
-        env->CallStaticVoidMethod(GlobalRef->Fcitx, GlobalRef->HandleFcitxEvent, 1, *vararg);
+        env->CallStaticVoidMethod(GlobalRef->Fcitx, GlobalRef->HandleFcitxInputEvent, static_cast<jlong>(target), 1, *vararg);
     };
-    auto preeditCallback = [](const fcitx::Text &clientPreedit) {
+    auto preeditCallback = [](const fcitx::Text &clientPreedit, int64_t target) {
         auto env = GlobalRef->AttachEnv();
         auto vararg = JRef<jobjectArray>(env, env->NewObjectArray(1, GlobalRef->FormattedText, nullptr));
         env->SetObjectArrayElement(vararg, 0, fcitxTextToJObject(env, clientPreedit));
-        env->CallStaticVoidMethod(GlobalRef->Fcitx, GlobalRef->HandleFcitxEvent, 2, *vararg);
+        env->CallStaticVoidMethod(GlobalRef->Fcitx, GlobalRef->HandleFcitxInputEvent, static_cast<jlong>(target), 2, *vararg);
     };
     auto inputPanelCallback = [](const fcitx::Text &preedit, const fcitx::Text &auxUp, const fcitx::Text &auxDown, const std::vector<CandidateActionEntity> &tabs) {
         auto env = GlobalRef->AttachEnv();
@@ -643,7 +659,7 @@ Java_org_fcitx_fcitx5_android_core_Fcitx_startupFcitx(
         auto vararg = JRef<jobjectArray>(env, env->NewObjectArray(0, GlobalRef->Object, nullptr));
         env->CallStaticVoidMethod(GlobalRef->Fcitx, GlobalRef->HandleFcitxEvent, 4, *vararg);
     };
-    auto keyEventCallback = [](const int sym, const uint32_t states, const uint32_t unicode, const bool up, const int timestamp) {
+    auto keyEventCallback = [](const int sym, const uint32_t states, const uint32_t unicode, const bool up, const int timestamp, int64_t target) {
         auto env = GlobalRef->AttachEnv();
         auto vararg = JRef<jobjectArray>(env, env->NewObjectArray(5, GlobalRef->Object, nullptr));
         env->SetObjectArrayElement(vararg, 0, env->NewObject(GlobalRef->Integer, GlobalRef->IntegerInit, sym));
@@ -651,7 +667,7 @@ Java_org_fcitx_fcitx5_android_core_Fcitx_startupFcitx(
         env->SetObjectArrayElement(vararg, 2, env->NewObject(GlobalRef->Integer, GlobalRef->IntegerInit, unicode));
         env->SetObjectArrayElement(vararg, 3, env->NewObject(GlobalRef->Boolean, GlobalRef->BooleanInit, up));
         env->SetObjectArrayElement(vararg, 4, env->NewObject(GlobalRef->Integer, GlobalRef->IntegerInit, timestamp));
-        env->CallStaticVoidMethod(GlobalRef->Fcitx, GlobalRef->HandleFcitxEvent, 5, *vararg);
+        env->CallStaticVoidMethod(GlobalRef->Fcitx, GlobalRef->HandleFcitxInputEvent, static_cast<jlong>(target), 5, *vararg);
     };
     auto imChangeCallback = [](const InputMethodStatus &status) {
         auto env = GlobalRef->AttachEnv();
@@ -674,14 +690,14 @@ Java_org_fcitx_fcitx5_android_core_Fcitx_startupFcitx(
         env->SetObjectArrayElement(vararg, 1, statusObj);
         env->CallStaticVoidMethod(GlobalRef->Fcitx, GlobalRef->HandleFcitxEvent, 7, *vararg);
     };
-    auto deleteSurroundingCallback = [](const int before, const int after) {
+    auto deleteSurroundingCallback = [](const int before, const int after, int64_t target) {
         std::array<int, 2> arr{before, after};
         auto env = GlobalRef->AttachEnv();
         auto vararg = JRef<jobjectArray>(env, env->NewObjectArray(1, GlobalRef->Object, nullptr));
         auto intArray = JRef<jintArray>(env, env->NewIntArray(2));
         env->SetIntArrayRegion(intArray, 0, 2, arr.data());
         env->SetObjectArrayElement(vararg, 0, intArray);
-        env->CallStaticVoidMethod(GlobalRef->Fcitx, GlobalRef->HandleFcitxEvent, 8, *vararg);
+        env->CallStaticVoidMethod(GlobalRef->Fcitx, GlobalRef->HandleFcitxInputEvent, static_cast<jlong>(target), 8, *vararg);
     };
     auto pagedCandidateCallback = [](const PagedCandidateEntity &paged) {
         auto env = GlobalRef->AttachEnv();
@@ -811,6 +827,27 @@ JNIEXPORT jboolean JNICALL
 Java_org_fcitx_fcitx5_android_core_Fcitx_isInputPanelEmpty(JNIEnv *env, jclass clazz) {
     RETURN_VALUE_IF_NOT_RUNNING(true)
     return Fcitx::Instance().isInputPanelEmpty();
+}
+
+extern "C"
+JNIEXPORT jboolean JNICALL
+Java_org_fcitx_fcitx5_android_core_Fcitx_hasInputPreedit(JNIEnv *env, jclass clazz) {
+    RETURN_VALUE_IF_NOT_RUNNING(false)
+    return Fcitx::Instance().hasInputPreedit();
+}
+
+extern "C"
+JNIEXPORT void JNICALL
+Java_org_fcitx_fcitx5_android_core_Fcitx_setAndroidInputTarget(JNIEnv *env, jclass clazz, jlong target) {
+    RETURN_IF_NOT_RUNNING
+    Fcitx::Instance().setInputTarget(target);
+}
+
+extern "C"
+JNIEXPORT jboolean JNICALL
+Java_org_fcitx_fcitx5_android_core_Fcitx_candidateMatches(JNIEnv *env, jclass clazz, jint idx, jstring text, jlong revision) {
+    RETURN_VALUE_IF_NOT_RUNNING(false)
+    return Fcitx::Instance().candidateMatches(idx, CString(env, text), revision);
 }
 
 extern "C"
@@ -1082,6 +1119,19 @@ JNIEXPORT void JNICALL
 Java_org_fcitx_fcitx5_android_core_Fcitx_refreshFcitxCandidatePreferences(JNIEnv *env, jclass clazz) {
     RETURN_IF_NOT_RUNNING
     Fcitx::Instance().refreshCandidatePreferences();
+}
+
+extern "C"
+JNIEXPORT jobjectArray JNICALL
+Java_org_fcitx_fcitx5_android_core_Fcitx_getRimePreferenceSchemas(JNIEnv *env, jclass, jstring dictionary) {
+    RETURN_VALUE_IF_NOT_RUNNING(nullptr)
+    auto schemas = Fcitx::Instance().preferenceSchemas(CString(env, dictionary));
+    auto array = env->NewObjectArray(schemas.size(), GlobalRef->String, nullptr);
+    for (size_t i = 0; i < schemas.size(); ++i) {
+        auto value = JString(env, schemas[i]);
+        env->SetObjectArrayElement(array, i, *value);
+    }
+    return array;
 }
 
 extern "C"

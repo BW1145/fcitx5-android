@@ -120,6 +120,22 @@ class ExperienceUiTest {
             assertTrue((0 until results.preferenceCount).any { results.getPreference(it).title.toString().contains("padding",true) || results.getPreference(it).title.toString().contains("边距") })
             query.callChangeListener("API")
             assertTrue((0 until results.preferenceCount).any { results.getPreference(it).title.toString().contains("AI") })
+            query.callChangeListener("备份")
+            val titles=(0 until results.preferenceCount).map { results.getPreference(it).title.toString() }
+            listOf(R.string.import_user_data,R.string.export_user_data,R.string.browse_user_data_dir).forEach {
+                assertTrue("Backup search includes the existing user-data action",controller.get().getString(it) in titles)
+            }
         } finally { controller.pause().stop().destroy() }
+    }
+
+    @Test fun experienceDefaultsPreserveAnExplicitCandidateLayout() {
+        val prefs=AppPrefs.getInstance().keyboard.expandedCandidateStyle
+        val previous=prefs.getValue()
+        val root=java.nio.file.Files.createTempDirectory("experience-defaults").toFile()
+        try {
+            prefs.setValue(org.fcitx.fcitx5.android.input.candidates.expanded.ExpandedCandidateStyle.Grid)
+            org.fcitx.fcitx5.android.core.PersonalDefaults.installExperienceDefaults(root)
+            assertEquals(org.fcitx.fcitx5.android.input.candidates.expanded.ExpandedCandidateStyle.Grid,prefs.getValue())
+        } finally { prefs.setValue(previous);root.deleteRecursively() }
     }
 }

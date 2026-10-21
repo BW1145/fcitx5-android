@@ -179,10 +179,10 @@ abstract class BaseExpandedCandidateWindow<T : BaseExpandedCandidateWindow<T>> :
 
     fun bindCandidateUiViewHolder(holder: CandidateViewHolder) {
         holder.itemView.setOnClickListener {
-            service.selectCandidate(holder.idx)
+            service.selectCandidate(holder.idx, holder.candidate)
         }
         holder.itemView.setOnLongClickListener {
-            inputView.showCandidateActionMenu(holder.idx, holder.candidate.text, holder.ui.root)
+            inputView.showCandidateActionMenu(holder.idx, holder.candidate, holder.ui.root)
             true
         }
     }

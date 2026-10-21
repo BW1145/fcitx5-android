@@ -39,6 +39,8 @@ methods = {
         "wordSnapshotsRestoreMergeAndRoundTrip",
         "chineseCandidateActionsPreserveSelection",
         "japanesePriorityPreservesConversion",
+        "candidateActionsRejectAnOldListAndKeepTheCurrentComposition",
+        "snapshotMergePreservesDynamicWeightsTicksAndDeletionRecords",
         "privateAiDraftsStayOutOfSavedHistory",
     },
     "PersonalRimeTest": {

@@ -18,7 +18,6 @@ import androidx.annotation.Size
 import org.fcitx.fcitx5.android.R
 import org.fcitx.fcitx5.android.core.FcitxEvent
 import org.fcitx.fcitx5.android.daemon.FcitxConnection
-import org.fcitx.fcitx5.android.daemon.launchOnReady
 import org.fcitx.fcitx5.android.data.prefs.AppPrefs
 import org.fcitx.fcitx5.android.data.theme.Theme
 import org.fcitx.fcitx5.android.input.candidates.floating.PagedCandidatesUi
@@ -99,10 +98,10 @@ class CandidatesView(
 
     private val candidatesUi = PagedCandidatesUi(
         ctx, theme, setupTextView,
-        onCandidateClick = { index -> fcitx.launchOnReady { it.select(index) } },
-        onCandidateAction = { index, text, view -> showCandidateActionMenu(index, text, view) },
-        onPrevPage = { fcitx.launchOnReady { it.offsetCandidatePage(-1) } },
-        onNextPage = { fcitx.launchOnReady { it.offsetCandidatePage(1) } }
+        onCandidateClick = { index, candidate -> service.selectCandidate(index, candidate) },
+        onCandidateAction = { index, candidate, view -> showCandidateActionMenu(index, candidate, view) },
+        onPrevPage = { service.postInputJob { offsetCandidatePage(-1) } },
+        onNextPage = { service.postInputJob { offsetCandidatePage(1) } }
     )
 
     override fun onStartHandleFcitxEvent() {

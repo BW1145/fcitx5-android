@@ -17,8 +17,10 @@ class CandidateViewHolder(val ui: CandidateItemUi) : RecyclerView.ViewHolder(ui.
 
     fun update(newIndex: Int, newCandidate: CandidateWord) {
         idx = newIndex
-        if (candidate != newCandidate) {
-            candidate = newCandidate
+        val changed = candidate != newCandidate
+        // Keep the current source identity even when the displayed text is equal.
+        candidate = newCandidate
+        if (changed) {
             ui.updateCandidate(newCandidate)
         }
     }

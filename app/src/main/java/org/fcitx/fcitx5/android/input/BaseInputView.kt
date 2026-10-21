@@ -20,6 +20,7 @@ import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.launch
 import org.fcitx.fcitx5.android.R
 import org.fcitx.fcitx5.android.core.FcitxEvent
+import org.fcitx.fcitx5.android.core.CandidateWord
 import org.fcitx.fcitx5.android.daemon.FcitxConnection
 import org.fcitx.fcitx5.android.data.InputFeedbacks
 import org.fcitx.fcitx5.android.data.prefs.AppPrefs
@@ -78,7 +79,10 @@ abstract class BaseInputView(
                         updates.tryReceive()
                         pending.values.toList().also { pending.clear() }
                     }
-                    batch.forEach { handleFcitxEvent(it) }
+                    batch.forEach {
+                        if (it !is FcitxEvent.StatusAreaEvent) dismissCandidateActionMenu()
+                        handleFcitxEvent(it)
+                    }
                 }
             } finally {
                 fcitx.runImmediately { removeInputEventListener(listener) }
@@ -96,25 +100,32 @@ abstract class BaseInputView(
                     setupFcitxEventHandler()
                 } else onStartHandleFcitxEvent()
             } else {
+                dismissCandidateActionMenu()
                 eventHandlerJob?.cancel()
                 eventHandlerJob = null
             }
         }
 
-    private fun triggerCandidateAction(idx: Int, actionIdx: Int) {
-        fcitx.runIfReady { triggerCandidateAction(idx, actionIdx) }
-    }
-
     private var candidateActionMenu: PopupMenu? = null
+    private var candidateMenuJob: Job? = null
+
+    private fun dismissCandidateActionMenu() {
+        candidateMenuJob?.cancel()
+        candidateMenuJob = null
+        candidateActionMenu?.dismiss()
+        candidateActionMenu = null
+    }
 
     val themedContext = context.withTheme(R.style.Theme_InputViewTheme)
 
-    fun showCandidateActionMenu(idx: Int, text: String, view: View) {
-        candidateActionMenu?.dismiss()
-        candidateActionMenu = null
-        service.lifecycleScope.launch {
-            val actions = fcitx.runOnReady { getCandidateActions(idx) }
-            if (actions.isEmpty()) return@launch
+    fun showCandidateActionMenu(idx: Int, candidate: CandidateWord, view: View) {
+        dismissCandidateActionMenu()
+        if (!handleEvents) return
+        val target = service.inputActionToken
+        candidateMenuJob = service.lifecycleScope.launch {
+            val actions = fcitx.runOnReady { getCandidateActions(idx, candidate) }
+            if (actions.isEmpty() || !handleEvents || !view.isAttachedToWindow || !service.isCurrentInputTarget(target) ||
+                fcitx.runImmediately { candidateRevisionCached } != candidate.revision) return@launch
             InputFeedbacks.hapticFeedback(view, longPress = true)
             candidateActionMenu = PopupMenu(themedContext, view).apply {
                 menu.add(buildSpannedString {
@@ -125,7 +136,7 @@ abstract class BaseInputView(
                                 theme.genericActiveForegroundColor
                             )
                         ) {
-                            append(text)
+                            append(candidate.text)
                         }
                     }
                 }).apply {
@@ -133,7 +144,7 @@ abstract class BaseInputView(
                 }
                 actions.forEach { action ->
                     menu.item(action.text) {
-                        triggerCandidateAction(idx, action.id)
+                        service.postInputJob(target) { triggerCandidateAction(idx, action.id, candidate) }
                     }
                 }
                 setOnDismissListener {

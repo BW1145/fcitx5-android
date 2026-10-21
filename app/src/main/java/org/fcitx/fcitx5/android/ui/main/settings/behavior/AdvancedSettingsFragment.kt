@@ -35,6 +35,14 @@ import org.fcitx.fcitx5.android.utils.toast
 
 class AdvancedSettingsFragment : ManagedPreferenceFragment(AppPrefs.getInstance().advanced) {
 
+    companion object {
+        val userDataEntries = listOf(
+            "browse_user_data" to R.string.browse_user_data_dir,
+            "export_user_data" to R.string.export_user_data,
+            "import_user_data" to R.string.import_user_data
+        )
+    }
+
     private val viewModel: MainViewModel by activityViewModels()
 
     private var exportTimestamp = System.currentTimeMillis()
@@ -134,6 +142,9 @@ class AdvancedSettingsFragment : ManagedPreferenceFragment(AppPrefs.getInstance(
                 }
                 .setNegativeButton(android.R.string.cancel, null)
                 .show()
+        }
+        userDataEntries.forEachIndexed { index, (key, _) ->
+            screen.getPreference(screen.preferenceCount - userDataEntries.size + index).key = key
         }
     }
 }
