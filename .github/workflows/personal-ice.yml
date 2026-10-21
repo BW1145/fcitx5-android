@@ -57,7 +57,7 @@ jobs:
       - uses: gradle/actions/setup-gradle@v6
       - name: Build Rime 1.17 with input enhancements
         run: bash scripts/build_personal_rime.sh arm64-v8a
-      - name: Build signed IME and optional plugins
+      - name: Build the signed reference IME and optional plugins
         env:
           SIGN_KEY_BASE64: ${{ secrets.PERSONAL_SIGNING_KEY }}
           SIGN_KEY_PWD: ${{ secrets.PERSONAL_SIGNING_PASSWORD }}
@@ -68,7 +68,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          mkdir -p dist "$RUNNER_TEMP/previous-signature"
+          mkdir -p dist build/personal-ci "$RUNNER_TEMP/previous-signature"
           apk=$(find app/build/outputs/apk/release -name '*.apk' -print -quit)
           chewing=$(find plugin/chewing/build/outputs/apk/release -name '*.apk' -print -quit)
           clipboard=$(find plugin/clipboard-filter/build/outputs/apk/release -name '*.apk' -print -quit)
@@ -78,32 +78,30 @@ jobs:
             --version-code "$BUILD_VERSION_CODE" --version-name "$BUILD_VERSION_NAME" \
             --plugin-apk "$chewing" --plugin-apk "$clipboard" \
             --previous-signature "$RUNNER_TEMP/previous-signature/signature.txt" \
-            --signature-report dist/signature.txt
-          "$ANDROID_HOME/build-tools/36.1.0/aapt" dump permissions "$apk" > dist/permissions.txt
-          cp "$apk" dist/fcitx5-custom-arm64.apk
+            --signature-report build/personal-ci/reference-signature.txt
+          cp "$apk" build/personal-ci/reference-full.apk
           cp "$chewing" dist/fcitx5-custom-chewing-arm64.apk
           cp "$clipboard" dist/fcitx5-custom-clipboard-filter.apk
-          cp app/build/outputs/apk/release/build-metadata.json dist/
           cp scripts/personal-rime-dependencies.json dist/
-          cd dist
-          sha256sum *.apk > SHA256SUMS
-      - name: Build the matching signed lite APK
+      - name: Build the signed lightweight release APK
         env:
           SIGN_KEY_BASE64: ${{ secrets.PERSONAL_SIGNING_KEY }}
           SIGN_KEY_PWD: ${{ secrets.PERSONAL_SIGNING_PASSWORD }}
           SIGN_KEY_ALIAS: personal
         run: ./gradlew -PbuildABI=arm64-v8a -PpersonalPackaging=lite :app:assembleRelease
-      - name: Verify lite identity, retained data and measured size reduction
+      - name: Verify the release identity, retained data and measured size reduction
         run: |
           apk=$(find app/build/outputs/apk/release -name '*.apk' -print -quit)
           python3 scripts/verify_personal_apk.py "$apk" arm64-v8a \
             --application-id "$MAIN_APPLICATION_ID" \
             --version-code "$BUILD_VERSION_CODE" --version-name "$BUILD_VERSION_NAME" \
-            --previous-signature dist/signature.txt \
-            --signature-report dist/signature-lite.txt
-          cp "$apk" dist/fcitx5-custom-lite-arm64.apk
-          python3 scripts/verify_personal_lite.py dist/fcitx5-custom-arm64.apk \
-            dist/fcitx5-custom-lite-arm64.apk --report dist/apk-size-comparison.json
+            --previous-signature build/personal-ci/reference-signature.txt \
+            --signature-report dist/signature.txt
+          cp "$apk" dist/fcitx5-custom-arm64.apk
+          "$ANDROID_HOME/build-tools/36.1.0/aapt" dump permissions "$apk" > dist/permissions.txt
+          cp app/build/outputs/apk/release/build-metadata.json dist/
+          python3 scripts/verify_personal_lite.py build/personal-ci/reference-full.apk \
+            dist/fcitx5-custom-arm64.apk --report dist/apk-size-comparison.json
           cd dist
           sha256sum *.apk > SHA256SUMS
       - uses: actions/upload-artifact@v7
@@ -340,9 +338,8 @@ jobs:
           - 语音识别测试页检查设备开放的服务并尝试识别中文。
 
           安装：
-          - 推荐 fcitx5-custom-lite-arm64.apk：保留雾凇全部词库、模型、联想、日语及全部定制功能。
-          - fcitx5-custom-arm64.apk：额外预装 Fcitx 备用拼音及码表数据。
-          - 两版沿用既有包名与签名，可覆盖安装并保留用户数据。
+          - 主安装包 fcitx5-custom-arm64.apk：采用轻量打包，保留雾凇全部词库、模型、联想、日语及全部定制功能。
+          - 沿用既有包名与签名，可直接覆盖既有定制版并保留用户数据。
           - AI 仅在主动发送或测试时联网；API Key 在本机加密，换机后重新填写。系统语音服务可能联网。
 
           可选插件：
