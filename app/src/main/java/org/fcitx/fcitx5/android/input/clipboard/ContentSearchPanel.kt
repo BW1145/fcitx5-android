@@ -175,6 +175,9 @@ class ContentSearchPanel(private val service: FcitxInputMethodService, private v
     }
     private val results = LinearLayout(service).apply { orientation = LinearLayout.VERTICAL }
     private var saved = false
+    private var aiMode = false
+    private val ai by lazy { org.fcitx.fcitx5.android.input.ai.AiPanel(service,theme,editor.view,
+        { sendAi() }, { text,replace -> close(text,replace) }) }
     private var job: Job? = null
     private var backspaceStartedWithPreedit = false
     private var swipeHadPreedit = false
@@ -191,33 +194,49 @@ class ContentSearchPanel(private val service: FcitxInputMethodService, private v
         })
         root.addView(ScrollView(service).apply { addView(results) },
             LinearLayout.LayoutParams(-1, service.dp(180)))
-        editor.view.doAfterTextChanged { if (active) search() }
+        editor.view.doAfterTextChanged {
+            if (state == State.Open && aiMode) {
+                job?.cancel()
+                job=service.lifecycleScope.launch { delay(200);if(active && aiMode) ai.rememberDraft() }
+            } else if (active && !aiMode) search()
+        }
     }
 
-    fun open(savedContent: Boolean) {
+    fun open(savedContent: Boolean, assistant: Boolean = false) {
+        if(active) close()
         session++
         state = State.Opening
         saved = savedContent
+        aiMode = assistant
         backspaceStartedWithPreedit = false
         selecting = false
         swipeHadPreedit = false
         editor.clear()
         root.visibility = View.VISIBLE
+        results.parent.let { (it as? View)?.visibility = if(assistant) View.GONE else View.VISIBLE }
+        if(assistant) {
+            if(ai.root.parent==null) root.addView(ai.root)
+            ai.root.visibility=View.VISIBLE
+        } else {
+            if(root.childCount>2) root.getChildAt(2).visibility=View.GONE
+            editor.view.setHint(R.string.content_search)
+        }
         service.beginContentSearch(this, session)
-        search()
+        if(assistant) ai.open() else search()
     }
 
     internal fun ready(token: Long) {
         if (session == token && state == State.Opening) state = State.Open
     }
 
-    fun close(result: String? = null) {
+    fun close(result: String? = null, replaceDraft: Boolean = false) {
         if (!active) return
+        if(aiMode) ai.close()
         state = State.Closing
         root.visibility = View.GONE
         job?.cancel()
         editor.finishComposing()
-        service.endContentSearch(this, session, result)
+        service.endContentSearch(this, session, result, replaceDraft)
     }
 
     internal fun closed(token: Long): Boolean {
@@ -249,6 +268,13 @@ class ContentSearchPanel(private val service: FcitxInputMethodService, private v
         }
         reset()
         service.awaitInputEvents(this)
+    }
+
+    private fun sendAi() {
+        enqueue { token ->
+            commitAndReset(token)
+            withContext(Dispatchers.Main) { if(accepts(token)) ai.send() }
+        }
     }
 
     fun commitLiteral(text: String, cursor: Int = -1) {
@@ -283,6 +309,10 @@ class ContentSearchPanel(private val service: FcitxInputMethodService, private v
     private suspend fun FcitxAPI.macro(token: Long, steps: List<KeyMacros.Step>) {
         for (step in steps) {
             if (!accepts(token)) return
+            if(step.action=="privacy") {
+                withContext(Dispatchers.Main) { service.togglePrivacyMode() }
+                return
+            }
             if (step.action == "clear") {
                 reset()
                 service.awaitInputEvents(this)

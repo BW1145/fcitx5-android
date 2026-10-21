@@ -14,6 +14,8 @@
 #include <fcitx-utils/event.h>
 
 #include "androidfrontend.h"
+#include "candidatepreferences.h"
+#include "../personal-anthy-public.h"
 
 namespace fcitx {
 
@@ -37,10 +39,12 @@ public:
     [[nodiscard]] const char *frontend() const override { return "androidfrontend"; }
 
     void commitStringImpl(const std::string &text) override {
+        lastCommitted_ = text;
         frontend_->commitString(text, -1);
     }
 
     void commitStringWithCursorImpl(const std::string &text, size_t cursor) override {
+        lastCommitted_ = text;
         frontend_->commitString(text, static_cast<int>(cursor));
     }
 
@@ -92,6 +96,12 @@ public:
     }
 
     void updateCandidatesBulk() {
+        beginPreferences(false);
+        if (prefer_) {
+            auto candidates = preferenceCandidates(0,16);
+            frontend_->updateCandidateList(candidates, ended_ ? static_cast<int>(order_.size()) : -1);
+            return;
+        }
         std::vector<CandidateEntity> candidates;
         int total = 0;
         const auto &list = inputPanel().candidateList();
@@ -123,6 +133,7 @@ public:
     }
 
     void updateCandidatesPaged() {
+        beginPreferences(true);
         const auto &list = inputPanel().candidateList();
         if (!list) {
             frontend_->updatePagedCandidate(PagedCandidateEntity::Empty);
@@ -137,6 +148,12 @@ public:
             hasPrev = pageable->hasPrev();
             hasNext = pageable->hasNext();
         }
+        if (prefer_) {
+            auto candidates=preferenceCandidates(0,list->size());
+            frontend_->updatePagedCandidate(PagedCandidateEntity(candidates,candidates.empty() ? -1 : 0,
+                layoutHint,hasPrev,hasNext));
+            return;
+        }
         int size = list->size();
         std::vector<CandidateEntity> candidates;
         candidates.reserve(size);
@@ -148,6 +165,8 @@ public:
     }
 
     bool selectCandidateBulk(int idx) {
+        idx = originalIndex(idx);
+        if(idx<0) return false;
         const auto &list = inputPanel().candidateList();
         if (!list) {
             return false;
@@ -167,6 +186,8 @@ public:
     }
 
     bool selectCandidatePaged(int idx) {
+        idx = originalIndex(idx);
+        if(idx<0) return false;
         const auto &list = inputPanel().candidateList();
         if (!list) {
             return false;
@@ -181,6 +202,7 @@ public:
     }
 
     std::vector<CandidateEntity> getCandidates(const int offset, const int limit) {
+        if(prefer_) return preferenceCandidates(offset,limit);
         std::vector<CandidateEntity> candidates;
         const auto &list = inputPanel().candidateList();
         if (list) {
@@ -206,8 +228,14 @@ public:
         return candidates;
     }
 
-    std::vector<CandidateActionEntity> getCandidateAction(const int idx) {
+    std::vector<CandidateActionEntity> getCandidateAction(int idx) {
+        idx=originalIndex(idx);
+        if(idx<0) return {};
         std::vector<CandidateActionEntity> actions;
+        CandidateAction forget;forget.setId(-1001);forget.setText("忘记");
+        CandidateAction lower;lower.setId(-1002);lower.setText("降低优先级");
+        actions.emplace_back(forget);
+        actions.emplace_back(lower);
         const auto &list = inputPanel().candidateList();
         if (list) {
             const auto &actionable = list->toActionable();
@@ -218,7 +246,7 @@ public:
                         try {
                             const auto &c = bulk->candidateFromAll(idx);
                             for (const auto &a: actionable->candidateActions(c)) {
-                                actions.emplace_back(a);
+                                if(!isForgetAction(a)) actions.emplace_back(a);
                             }
                         } catch (const std::exception &e) {
                             FCITX_WARN() << "getCandidateAction(" << idx << ") failed:" << e.what();
@@ -227,7 +255,7 @@ public:
                 } else {
                     const auto &c = list->candidate(idx);
                     for (const auto &a: actionable->candidateActions(c)) {
-                        actions.emplace_back(a);
+                        if(!isForgetAction(a)) actions.emplace_back(a);
                     }
                 }
             }
@@ -235,9 +263,26 @@ public:
         return actions;
     }
 
-    void triggerCandidateAction(const int idx, const int actionIdx) {
+    void triggerCandidateAction(int idx, const int actionIdx) {
+        idx=originalIndex(idx);
         const auto &list = inputPanel().candidateList();
-        if (!list) return;
+        if (!list || idx<0) return;
+        if(actionIdx == -1001 || actionIdx == -1002) {
+            const auto &word=rawCandidate(idx);
+            auto text=filterString(word.text());
+            preferences_.set(scope_,text,actionIdx == -1001 ? 1 : 2);
+            if(actionIdx == -1001) {
+                if(auto actionable=list->toActionable()) {
+                    for(const auto &action:actionable->candidateActions(word)) {
+                        if(isForgetAction(action)) {
+                            actionable->triggerAction(word,action.id());break;
+                        }
+                    }
+                }
+            }
+            updateUserInterface(UserInterfaceComponent::InputPanel);
+            return;
+        }
         const auto &actionable = list->toActionable();
         if (!actionable) return;
         if (idx >= list->size()) {
@@ -289,7 +334,88 @@ public:
         }
     }
 
+    bool preferredKey(const Key &key,bool release) {
+        if(!prefer_ || !inputPanel().candidateList() || key.states().testAny(KeyState::SimpleMask)) return false;
+        if(key.sym()!=FcitxKey_space && key.sym()!=FcitxKey_0 &&
+            !(key.sym()>=FcitxKey_1 && key.sym()<=FcitxKey_9)) return false;
+        if(release) return true;
+        const auto *entry=frontend_->instance()->inputMethodEntry(this);
+        if(key.sym()==FcitxKey_space && entry && entry->uniqueName()=="anthy") {
+            const auto index=originalIndex(0);
+            if(index>=0) frontend_->instance()->addonManager().addon("anthy")->call<IAnthyEngine::personalSelectPreview>(
+                this,rawCandidate(index).text().toString());
+            return true;
+        }
+        const int index=key.sym()==FcitxKey_0 ? 9 :
+            key.sym()>=FcitxKey_1 && key.sym()<=FcitxKey_9 ? key.sym()-FcitxKey_1 : 0;
+        if(paged_) selectCandidatePaged(index); else selectCandidateBulk(index);
+        return true;
+    }
+
 private:
+    bool isForgetAction(const CandidateAction &action) {
+        auto entry=frontend_->instance()->inputMethodEntry(this);
+        return (entry && entry->uniqueName()=="rime" && action.id()==0) ||
+            action.text()=="Forget word" || action.text()=="忘记词汇";
+    }
+    CandidatePreferences preferences_;
+    std::string scope_;
+    std::string lastCommitted_;
+    bool prefer_=false, paged_=false, ended_=false;
+    int scanned_=0;
+    std::vector<int> order_, lowered_;
+
+    void beginPreferences(bool paged) {
+        preferences_.load();paged_=paged;ended_=false;scanned_=0;
+        order_.clear();lowered_.clear();
+        auto *entry=frontend_->instance()->inputMethodEntry(this);
+        auto preedit=inputPanel().preedit().toString();
+        if(preedit.empty()) preedit=inputPanel().clientPreedit().toString();
+        if(entry && entry->uniqueName()=="anthy") preedit="japanese";
+        scope_=preferenceHex(entry ? entry->uniqueName() : "")+"\t"+
+            preferenceHex(preedit.empty() ? "predict:"+lastCommitted_ : preferenceContext(preedit));
+        prefer_=preferences_.hasScope(scope_);
+    }
+    const CandidateWord &rawCandidate(int index) {
+        const auto &list=inputPanel().candidateList();
+        if(!paged_ && list->toBulk()) return list->toBulk()->candidateFromAll(index);
+        return list->candidate(index);
+    }
+    void fillOrder(int count) {
+        const auto &list=inputPanel().candidateList();
+        if(!list) { ended_=true;return; }
+        auto bulk=paged_ ? nullptr : list->toBulk();
+        int total=bulk ? bulk->totalSize() : list->size();
+        while(!ended_ && static_cast<int>(order_.size())<count) {
+            if(total>=0 && scanned_>=total) ended_=true;
+            else {
+                try {
+                    int index=scanned_++;
+                    const auto &word=rawCandidate(index);
+                    int mode=preferences_.mode(scope_,filterString(word.text()));
+                    if(mode==2) lowered_.push_back(index);
+                    else if(mode==0) order_.push_back(index);
+                } catch(const std::invalid_argument &) { ended_=true; }
+            }
+            // Keep demoted entries available after one expanded block of normal choices.
+            if(order_.size()>=32 || ended_) {
+                order_.insert(order_.end(),lowered_.begin(),lowered_.end());lowered_.clear();
+            }
+        }
+    }
+    int originalIndex(int index) {
+        if(index<0) return -1;
+        if(!prefer_) return index;
+        fillOrder(index+1);
+        return index<static_cast<int>(order_.size()) ? order_[index] : -1;
+    }
+    std::vector<CandidateEntity> preferenceCandidates(int offset,int limit) {
+        fillOrder(offset+limit);
+        std::vector<CandidateEntity> result;
+        for(int i=offset;i<offset+limit && i<static_cast<int>(order_.size());++i)
+            result.emplace_back(candidateEntity(rawCandidate(order_[i])));
+        return result;
+    }
     AndroidFrontend *frontend_;
     int uid_;
 
@@ -366,6 +492,7 @@ AndroidFrontend::AndroidFrontend(Instance *instance)
 
 void AndroidFrontend::keyEvent(const Key &key, bool isRelease, const int timestamp) {
     if (!activeIC_) return;
+    if(activeIC_->preferredKey(key,isRelease)) return;
     KeyEvent keyEvent(activeIC_, key, isRelease);
     activeIC_->keyEvent(keyEvent);
     if (!keyEvent.accepted()) {

@@ -402,6 +402,12 @@ class KawaiiBarComponent : UniqueViewComponent<KawaiiBarComponent, FrameLayout>(
             backgroundColor =
                 if (ThemeManager.prefs.keyBorder.getValue()) Color.TRANSPARENT
                 else theme.barColor
+            if (org.fcitx.fcitx5.android.data.theme.ArtStyle.of(theme) != null) {
+                background = org.fcitx.fcitx5.android.data.theme.ArtDrawable(theme,
+                    org.fcitx.fcitx5.android.data.theme.ArtStyle.of(theme)!!,
+                    org.fcitx.fcitx5.android.data.theme.ArtDrawable.Surface.Panel,
+                    theme.barColor, resources.displayMetrics.density)
+            }
             add(idleUi.root, lParams(matchParent, matchParent))
             add(candidateUi.root, lParams(matchParent, matchParent))
             add(titleUi.root, lParams(matchParent, matchParent))

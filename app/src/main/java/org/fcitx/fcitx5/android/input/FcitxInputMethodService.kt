@@ -178,6 +178,20 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
 
     private var capabilityFlags = CapabilityFlags.DefaultFlags
 
+    fun togglePrivacyMode() {
+        val enabled = org.fcitx.fcitx5.android.data.PrivacyMode.toggle()
+        closeContentSearch()
+        if(!enabled) org.fcitx.fcitx5.android.data.ai.AiStore.discardTemporary()
+        inputView?.refreshPrivacyIndicator()
+        postFcitxJob {
+            reset()
+            setCapFlags(CapabilityFlags(capabilityFlags.flags or
+                if (enabled) org.fcitx.fcitx5.android.core.CapabilityFlag.Sensitive.flag else 0UL))
+        }
+        inputView?.findViewById<org.fcitx.fcitx5.android.input.keyboard.TextKeyView>(R.id.button_space)
+            ?.mainText?.text = if (enabled) "隐私 · 长按空格退出" else "长按空格开启隐私"
+    }
+
     private val selection = CursorTracker()
     private val bulkDeletion = BulkDeletion()
 
@@ -188,6 +202,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         if (selection.latest.isNotEmpty()) ic.setSelection(cursor, cursor)
         if (bulkDeletion.clear(ic, cursor)) {
             selection.predict(0)
+            org.fcitx.fcitx5.android.data.InputFeedbacks.hapticFeedback(decorView,longPress=true)
         } else {
             Toast.makeText(this, R.string.bulk_delete_unavailable, Toast.LENGTH_SHORT).show()
         }
@@ -315,6 +330,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
 
     fun closeContentSearch() { contentSearchTarget?.close() }
     fun openContentSearch(saved: Boolean) { inputView?.contentSearch?.open(saved) }
+    fun openAiAssistant() { inputView?.contentSearch?.open(false,assistant=true) }
 
     fun beginContentSearch(panel: ContentSearchPanel, session: Long) {
         val previous = contentSearchTarget
@@ -333,7 +349,7 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         }
     }
 
-    fun endContentSearch(panel: ContentSearchPanel, session: Long, result: String?) {
+    fun endContentSearch(panel: ContentSearchPanel, session: Long, result: String?, replaceDraft: Boolean = false) {
         inputActionToken++
         val originalConnection = contentSearchConnection
         val originalEditor = contentSearchEditorSession
@@ -345,7 +361,10 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
                     contentSearchTarget = null
                     contentSearchConnection = null
                     if (result != null && editorSession == originalEditor &&
-                        currentInputConnection === originalConnection) commitTextToEditor(result)
+                        currentInputConnection === originalConnection) {
+                        if(replaceDraft && originalConnection?.performContextMenuAction(android.R.id.selectAll)!=true) return@withContext
+                        commitTextToEditor(result)
+                    }
                 }
             }
         }
@@ -761,6 +780,11 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
                     touchableRegion.union(android.graphics.Rect(inputViewLocation[0], inputViewLocation[1],
                         inputViewLocation[0] + preedit.width, inputViewLocation[1] + preedit.height))
                 }
+                inputView?.privacyIndicator?.takeIf { it.visibility == View.VISIBLE }?.let { indicator ->
+                    indicator.getLocationInWindow(inputViewLocation)
+                    touchableRegion.union(android.graphics.Rect(inputViewLocation[0],inputViewLocation[1],
+                        inputViewLocation[0]+indicator.width,inputViewLocation[1]+indicator.height))
+                }
             }
         } else {
             val n = decorView.findViewById<View>(android.R.id.navigationBarBackground)?.height ?: 0
@@ -907,7 +931,8 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
             }
             // EditorInfo can be different in onStartInput and onStartInputView,
             // especially in browsers
-            setCapFlags(flags)
+            setCapFlags(CapabilityFlags(flags.flags or if (org.fcitx.fcitx5.android.data.PrivacyMode.enabled)
+                org.fcitx.fcitx5.android.core.CapabilityFlag.Sensitive.flag else 0UL))
             // for hardware keyboard, focus to allow switching input methods before onStartInputView
             if (!isNullType) {
                 focus(true)

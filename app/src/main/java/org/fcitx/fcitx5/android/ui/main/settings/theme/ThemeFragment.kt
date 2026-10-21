@@ -74,6 +74,7 @@ class ThemeFragment : Fragment() {
                     else -> ThemeSettingsFragment()
                 }
             }
+            if(org.fcitx.fcitx5.android.ui.main.settings.SettingFocus.key != null) setCurrentItem(1,false)
         }
 
         TabLayoutMediator(tabLayout, viewPager) { tab, position ->

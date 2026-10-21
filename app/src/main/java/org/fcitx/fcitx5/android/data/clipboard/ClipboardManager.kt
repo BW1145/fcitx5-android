@@ -152,6 +152,7 @@ object ClipboardManager : ClipboardManager.OnPrimaryClipChangedListener,
     private var lastClipHash = 0
 
     override fun onPrimaryClipChanged() {
+        if (org.fcitx.fcitx5.android.data.PrivacyMode.enabled) return
         val clip = clipboardManager.primaryClip ?: return
         /**
          * skip duplicate ClipData
@@ -170,6 +171,7 @@ object ClipboardManager : ClipboardManager.OnPrimaryClipChangedListener,
         }
         launch {
             mutex.withLock {
+                if (org.fcitx.fcitx5.android.data.PrivacyMode.enabled) return@withLock
                 val entry = ClipboardEntry.fromClipData(clip, transformer) ?: return@withLock
                 if (entry.text.isBlank()) return@withLock
                 try {

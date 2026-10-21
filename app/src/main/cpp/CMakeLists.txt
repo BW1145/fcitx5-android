@@ -98,6 +98,7 @@ install(DIRECTORY "${PREBUILT_DIR}/opencc/data/" DESTINATION "${FCITX_INSTALL_DA
 # Bundle the Rime addon in the main APK using the upstream plugin build.
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../../../plugin/rime/src/main/cpp"
                  "${CMAKE_CURRENT_BINARY_DIR}/bundled-rime")
+include(personal-rime-ui.cmake)
 
 add_subdirectory("${CMAKE_CURRENT_SOURCE_DIR}/../../../../plugin/anthy/src/main/cpp"
                  "${CMAKE_CURRENT_BINARY_DIR}/bundled-anthy")

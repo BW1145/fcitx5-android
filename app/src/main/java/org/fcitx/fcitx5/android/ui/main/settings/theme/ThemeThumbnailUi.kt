@@ -67,6 +67,11 @@ class ThemeThumbnailUi(override val ctx: Context) : Ui {
         imageResource = R.drawable.ic_baseline_auto_awesome_24
     }
 
+    val nameLabel = android.widget.TextView(ctx).apply {
+        textSize=11f;maxLines=1;ellipsize=android.text.TextUtils.TruncateAt.END
+        setPaddingDp(6,0,6,0)
+    }
+
     override val root = constraintLayout {
         outlineProvider = ViewOutlineProvider.BOUNDS
         elevation = dp(2f)
@@ -92,9 +97,14 @@ class ThemeThumbnailUi(override val ctx: Context) : Ui {
             topOfParent()
             startOfParent()
         })
+        add(nameLabel,lParams(matchParent,dp(18)) { topOfParent(dp(2)) })
     }
 
     fun setTheme(theme: Theme) {
+        root.contentDescription=theme.name
+        nameLabel.text=theme.name
+        nameLabel.setTextColor(theme.keyTextColor)
+        nameLabel.visibility=if(org.fcitx.fcitx5.android.data.theme.ArtStyle.of(theme)!=null) View.VISIBLE else View.GONE
         root.apply {
             foreground = rippleDrawable(theme.keyPressHighlightColor)
         }
@@ -107,6 +117,14 @@ class ThemeThumbnailUi(override val ctx: Context) : Ui {
         }
         returnKey.background = ShapeDrawable(OvalShape()).apply {
             paint.color = theme.accentKeyBackgroundColor
+        }
+        org.fcitx.fcitx5.android.data.theme.ArtStyle.of(theme)?.let { style ->
+            bar.background=org.fcitx.fcitx5.android.data.theme.ArtDrawable(theme,style,
+                org.fcitx.fcitx5.android.data.theme.ArtDrawable.Surface.Panel,theme.barColor,ctx.resources.displayMetrics.density)
+            spaceBar.background=org.fcitx.fcitx5.android.data.theme.ArtDrawable(theme,style,
+                org.fcitx.fcitx5.android.data.theme.ArtDrawable.Surface.Space,theme.keyBackgroundColor,ctx.resources.displayMetrics.density)
+            returnKey.background=org.fcitx.fcitx5.android.data.theme.ArtDrawable(theme,style,
+                org.fcitx.fcitx5.android.data.theme.ArtDrawable.Surface.Key,theme.accentKeyBackgroundColor,ctx.resources.displayMetrics.density)
         }
         val foregroundTint = ColorStateList.valueOf(theme.altKeyTextColor)
         editButton.apply {

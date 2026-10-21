@@ -48,7 +48,7 @@
     <string name="clipboard_enable">启用剪贴板</string>
     <string name="expanded_candidate_style">展开候选词样式</string>
     <string name="expanded_candidate_style_grid">表格</string>
-    <string name="expanded_candidate_style_flexbox">弹性盒</string>
+    <string name="expanded_candidate_style_flexbox">按词长排列</string>
     <string name="no_more_input_methods">没有输入法可供切换</string>
     <string name="add_more_input_methods">您想添加更多输入法吗？</string>
     <string name="about">关于</string>

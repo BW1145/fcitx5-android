@@ -12,6 +12,8 @@ import android.graphics.drawable.shapes.OvalShape
 import android.widget.ImageView
 import androidx.core.graphics.ColorUtils
 import org.fcitx.fcitx5.android.data.theme.Theme
+import org.fcitx.fcitx5.android.data.theme.ArtStyle
+import org.fcitx.fcitx5.android.data.theme.ArtDrawable
 import org.fcitx.fcitx5.android.input.keyboard.KeyDef
 import splitties.dimensions.dp
 import splitties.resources.drawable
@@ -63,7 +65,9 @@ class PopupMenuUi(
 
     private val keyViews = items.map {
         imageView {
-            background = inactiveBackground
+            background = ArtStyle.of(theme)?.let { style -> ArtDrawable(theme,style,
+                ArtDrawable.Surface.Key,theme.accentKeyBackgroundColor,resources.displayMetrics.density,
+                ctx.dp(5f),ctx.dp(5f)) } ?: inactiveBackground
             scaleType = ImageView.ScaleType.CENTER_INSIDE
             imageDrawable = drawable(it.icon)!!.apply {
                 setTint(theme.accentKeyTextColor)
@@ -84,13 +88,17 @@ class PopupMenuUi(
 
     private fun markFocus(index: Int) {
         keyViews.getOrNull(index)?.apply {
-            background = activeBackground
+            background = ArtStyle.of(theme)?.let { style -> ArtDrawable(theme,style,
+                ArtDrawable.Surface.Key,theme.accentKeyBackgroundColor,resources.displayMetrics.density,
+                ctx.dp(5f),ctx.dp(5f),true) } ?: activeBackground
         }
     }
 
     private fun markInactive(index: Int) {
         keyViews.getOrNull(index)?.apply {
-            background = inactiveBackground
+            background = ArtStyle.of(theme)?.let { style -> ArtDrawable(theme,style,
+                ArtDrawable.Surface.Key,theme.accentKeyBackgroundColor,resources.displayMetrics.density,
+                ctx.dp(5f),ctx.dp(5f)) } ?: inactiveBackground
         }
     }
 

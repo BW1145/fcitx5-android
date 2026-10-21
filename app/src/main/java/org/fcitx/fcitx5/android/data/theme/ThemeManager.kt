@@ -23,7 +23,7 @@ object ThemeManager {
         fun onThemeChange(theme: Theme)
     }
 
-    val BuiltinThemes = listOf(
+    val BuiltinThemes = ArtThemes.all + listOf(
         ThemePreset.MaterialLight,
         ThemePreset.MaterialDark,
         ThemePreset.PixelLight,

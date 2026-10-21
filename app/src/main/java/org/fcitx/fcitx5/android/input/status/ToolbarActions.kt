@@ -20,6 +20,7 @@ import org.fcitx.fcitx5.android.input.status.StatusAreaEntry.Android.Type
 object ToolbarActions {
     fun entry(context: Context, type: Type): StatusAreaEntry.Android {
         val (label, icon) = when(type) {
+            Type.AiAssistant -> R.string.ai_assistant to R.drawable.ic_baseline_auto_awesome_24
             Type.Undo -> R.string.undo to R.drawable.ic_baseline_undo_24
             Type.Redo -> R.string.redo to R.drawable.ic_baseline_redo_24
             Type.SavedContent -> R.string.saved_content to R.drawable.ic_saved_content
@@ -37,6 +38,7 @@ object ToolbarActions {
     fun perform(type: Type, context: Context, service: FcitxInputMethodService, wm: InputWindowManager, fcitx: FcitxConnection) {
         if (type != Type.Undo && type != Type.Redo) service.closeContentSearch()
         when(type) {
+            Type.AiAssistant -> service.openAiAssistant()
             Type.Undo -> service.sendCombinationKeyEvents(KeyEvent.KEYCODE_Z, ctrl=true)
             Type.Redo -> service.sendCombinationKeyEvents(KeyEvent.KEYCODE_Z, ctrl=true,shift=true)
             Type.SavedContent -> wm.attachWindow(SavedContentWindow())

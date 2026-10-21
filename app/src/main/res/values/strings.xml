@@ -321,4 +321,6 @@
     <string name="keyboard_height_percent_base">Keyboard height percent base</string>
     <string name="display_metrics">Display metrics (Resources.getDisplayMetrics)</string>
     <string name="real_size">Real size (Display.getRealSize)</string>
+    <string name="privacy_mode">隐私模式</string>
+    <string name="ai_assistant">AI 助手</string>
 </resources>

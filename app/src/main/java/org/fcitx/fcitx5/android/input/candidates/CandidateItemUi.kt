@@ -10,6 +10,8 @@ import androidx.core.text.buildSpannedString
 import androidx.core.text.color
 import org.fcitx.fcitx5.android.core.CandidateWord
 import org.fcitx.fcitx5.android.data.theme.Theme
+import org.fcitx.fcitx5.android.data.theme.ArtStyle
+import org.fcitx.fcitx5.android.data.theme.ArtFeedbackDrawable
 import org.fcitx.fcitx5.android.input.AutoScaleTextView
 import org.fcitx.fcitx5.android.input.keyboard.CustomGestureView
 import org.fcitx.fcitx5.android.utils.pressHighlightDrawable
@@ -33,6 +35,12 @@ class CandidateItemUi(override val ctx: Context, val theme: Theme) : Ui {
 
     override val root = view(::CustomGestureView) {
         background = pressHighlightDrawable(theme.keyPressHighlightColor)
+        ArtStyle.of(theme)?.let { style ->
+            val feedback = ArtFeedbackDrawable(style,resources.displayMetrics.density)
+            foreground = feedback
+            onVisualFeedback = { feedback.signal(if(it == CustomGestureView.Feedback.Hold)
+                ArtFeedbackDrawable.Action.Hold else ArtFeedbackDrawable.Action.Gesture) }
+        }
 
         /**
          * candidate long press feedback is handled by [org.fcitx.fcitx5.android.input.BaseInputView.showCandidateActionMenu]

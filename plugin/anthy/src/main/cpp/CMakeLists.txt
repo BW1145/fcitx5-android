@@ -23,6 +23,7 @@ unset(BUILD_SHARED_LIBS)
 
 set(ANTHY_TARGET anthy-unicode)
 add_subdirectory(fcitx5-anthy)
+target_include_directories(anthy PRIVATE "${CMAKE_CURRENT_SOURCE_DIR}/../../../../../app/src/main/cpp")
 
 install(FILES
         "${PREBUILT_DIR}/anthy-dict/anthy.dic"

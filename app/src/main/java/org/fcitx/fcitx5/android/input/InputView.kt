@@ -75,6 +75,18 @@ class InputView(
 ) : BaseInputView(service, fcitx, theme) {
 
     val contentSearch = org.fcitx.fcitx5.android.input.clipboard.ContentSearchPanel(service,theme)
+    val privacyIndicator = android.widget.TextView(service).apply {
+        text="隐私模式 · 点击退出";textSize=12f;gravity=android.view.Gravity.CENTER
+        setTextColor(theme.candidateTextColor)
+        setBackgroundColor(theme.barColor)
+        setPadding(dp(8),dp(3),dp(8),dp(3))
+        visibility=if(org.fcitx.fcitx5.android.data.PrivacyMode.enabled) VISIBLE else GONE
+        setOnClickListener { service.togglePrivacyMode() }
+    }
+
+    fun refreshPrivacyIndicator() {
+        privacyIndicator.visibility=if(org.fcitx.fcitx5.android.data.PrivacyMode.enabled) VISIBLE else GONE
+    }
     private val keyBorder by ThemeManager.prefs.keyBorder
 
     private val customBackground = imageView {
@@ -273,7 +285,8 @@ class InputView(
             centerHorizontally()
             bottomOfParent()
         })
-        add(contentSearch.root, lParams(matchParent, wrapContent) { above(preedit.ui.root); centerHorizontally() })
+        add(privacyIndicator, lParams(matchParent, wrapContent) { above(preedit.ui.root); centerHorizontally() })
+        add(contentSearch.root, lParams(matchParent, wrapContent) { above(privacyIndicator); centerHorizontally() })
         add(popup.root, lParams(matchParent, matchParent) {
             centerVertically()
             centerHorizontally()

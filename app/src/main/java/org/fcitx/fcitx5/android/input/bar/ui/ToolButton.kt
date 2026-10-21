@@ -12,6 +12,8 @@ import androidx.annotation.ColorInt
 import androidx.annotation.DrawableRes
 import org.fcitx.fcitx5.android.data.prefs.AppPrefs
 import org.fcitx.fcitx5.android.data.theme.Theme
+import org.fcitx.fcitx5.android.data.theme.ArtStyle
+import org.fcitx.fcitx5.android.data.theme.ArtFeedbackDrawable
 import org.fcitx.fcitx5.android.input.keyboard.CustomGestureView
 import org.fcitx.fcitx5.android.utils.borderlessRippleDrawable
 import org.fcitx.fcitx5.android.utils.circlePressHighlightDrawable
@@ -47,6 +49,13 @@ class ToolButton(context: Context) : CustomGestureView(context) {
         image.imageTintList = ColorStateList.valueOf(theme.altKeyTextColor)
         setIcon(icon)
         setPressHighlightColor(theme.keyPressHighlightColor)
+        ArtStyle.of(theme)?.let { style ->
+            background = null
+            val feedback = ArtFeedbackDrawable(style,resources.displayMetrics.density,dp(3f),dp(3f))
+            foreground = feedback
+            onVisualFeedback = { feedback.signal(if(it == Feedback.Hold)
+                ArtFeedbackDrawable.Action.Hold else ArtFeedbackDrawable.Action.Gesture) }
+        }
         add(image, lParams(wrapContent, wrapContent, gravityCenter))
     }
 

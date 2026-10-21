@@ -11,7 +11,7 @@ import org.fcitx.fcitx5.android.data.KeyMacros
 class KeyMacroActivity : AppCompatActivity() {
     private lateinit var rows: LinearLayout
     private val triggerNames get() = resources.getStringArray(R.array.macro_triggers)
-    private val actionNames get() = resources.getStringArray(R.array.macro_actions)
+    private val actionNames get() = resources.getStringArray(R.array.macro_actions) + "切换隐私模式"
     private fun keyName(key: String) = when(key) {
         "backspace" -> getString(R.string.macro_backspace); "space" -> getString(R.string.macro_space)
         "return" -> getString(R.string.macro_return); "caps" -> getString(R.string.macro_caps)
@@ -43,6 +43,7 @@ class KeyMacroActivity : AppCompatActivity() {
         val key = spinner(KeyMacros.keys.map(::keyName), original?.let { KeyMacros.keys.indexOf(it.key) } ?: 0)
         val trigger = spinner(triggerNames.toList(), original?.let { KeyMacros.triggers.indexOf(it.trigger) } ?: 0)
         panel.addView(key); panel.addView(trigger)
+        panel.addView(TextView(this).apply { text="宏绑定优先于默认按键动作。空格长按默认切换隐私模式；绑定其他宏后执行新宏。" })
         val steps = original?.steps?.toMutableList() ?: mutableListOf()
         val stepRows = LinearLayout(this).apply { orientation = LinearLayout.VERTICAL }; panel.addView(stepRows)
         fun renderSteps() {

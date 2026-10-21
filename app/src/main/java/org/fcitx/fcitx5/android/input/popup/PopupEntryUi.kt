@@ -9,6 +9,8 @@ import android.graphics.drawable.GradientDrawable
 import android.view.ViewOutlineProvider
 import android.widget.TextView
 import org.fcitx.fcitx5.android.data.theme.Theme
+import org.fcitx.fcitx5.android.data.theme.ArtStyle
+import org.fcitx.fcitx5.android.data.theme.ArtDrawable
 import org.fcitx.fcitx5.android.input.AutoScaleTextView
 import splitties.dimensions.dp
 import splitties.views.dsl.constraintlayout.centerHorizontally
@@ -32,7 +34,8 @@ class PopupEntryUi(override val ctx: Context, theme: Theme, keyHeight: Int, radi
     }
 
     override val root = constraintLayout {
-        background = GradientDrawable().apply {
+        background = ArtStyle.of(theme)?.let { ArtDrawable(theme,it,ArtDrawable.Surface.Key,
+            theme.popupBackgroundColor,resources.displayMetrics.density) } ?: GradientDrawable().apply {
             cornerRadius = radius
             setColor(theme.popupBackgroundColor)
         }

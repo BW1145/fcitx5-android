@@ -1,0 +1,114 @@
+/* SPDX-License-Identifier: LGPL-2.1-or-later */
+package org.fcitx.fcitx5.android
+
+import android.graphics.Bitmap
+import android.graphics.Canvas
+import android.view.View
+import androidx.test.platform.app.InstrumentationRegistry
+import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.filterIsInstance
+import kotlinx.coroutines.flow.first
+import org.fcitx.fcitx5.android.core.FcitxEvent
+import org.fcitx.fcitx5.android.daemon.FcitxDaemon
+import org.fcitx.fcitx5.android.data.*
+import org.fcitx.fcitx5.android.data.ai.AiStore
+import org.fcitx.fcitx5.android.data.theme.ArtThemes
+import org.fcitx.fcitx5.android.input.keyboard.TextKeyboard
+import org.junit.Assert.*
+import org.junit.Test
+import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
+import java.io.File
+
+class PersonalExperienceTest {
+    private val instrumentation=InstrumentationRegistry.getInstrumentation()
+    private val context get()=instrumentation.targetContext
+    @Test fun artThemesRenderDifferentCompleteKeyboards() {
+        instrumentation.runOnMainSync {
+            val hashes=mutableSetOf<Int>()
+            ArtThemes.all.forEachIndexed { index,theme ->
+                val keyboard=TextKeyboard(context,theme)
+                keyboard.measure(View.MeasureSpec.makeMeasureSpec(1080,View.MeasureSpec.EXACTLY),View.MeasureSpec.makeMeasureSpec(650,View.MeasureSpec.EXACTLY))
+                keyboard.layout(0,0,1080,650)
+                val bitmap=Bitmap.createBitmap(1080,650,Bitmap.Config.ARGB_8888)
+                val canvas=Canvas(bitmap)
+                theme.backgroundDrawable().apply { setBounds(0,0,1080,650);draw(canvas) }
+                keyboard.draw(canvas)
+                val pixels=IntArray(1080*650);bitmap.getPixels(pixels,0,1080,0,0,1080,650)
+                hashes+=pixels.contentHashCode()
+                val output=context.getExternalFilesDir(null)!!.resolve("theme-$index.png")
+                output.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG,100,it) }
+                bitmap.recycle()
+            }
+            assertEquals("All four styles have distinct rendered geometry and materials",4,hashes.size)
+        }
+    }
+    @Test fun wordSnapshotsAndCandidateActionsPreserveSelection()=runBlocking {
+        val connection=FcitxDaemon.connect("experience-test")
+        var baseline:WordLibrary.Snapshot?=null
+        val created=mutableListOf<WordLibrary.Snapshot>()
+        try {
+            connection.runOnReady { activate(android.os.Process.myUid(),context.packageName);focus();activateIme("rime");reset()
+                "nihao".forEach { sendKey(it) };delay(200);select(0);reset() }
+            baseline=WordLibrary.snapshot(connection,"测试前状态").also { created+=it }
+            WordLibrary.add(connection,"rime_ice","验收词甲","yan shou ci jia",1000)
+            assertTrue(WordLibrary.words(connection).any { it.text=="验收词甲" })
+            val first=WordLibrary.snapshot(connection,"词条甲").also { created+=it }
+            WordLibrary.add(connection,"rime_ice","验收词乙","yan shou ci yi",1000)
+            val second=WordLibrary.snapshot(connection,"词条乙").also { created+=it }
+            WordLibrary.restore(connection,first,false)
+            assertFalse(WordLibrary.words(connection).any { it.text=="验收词乙" })
+            WordLibrary.restore(connection,second,true)
+            assertTrue(WordLibrary.words(connection).any { it.text=="验收词乙" })
+            val zipped=ByteArrayOutputStream().also { WordLibrary.export(first,it) }.toByteArray()
+            val imported=WordLibrary.import(ByteArrayInputStream(zipped)).also { created+=it }
+            assertEquals(first.count,imported.count)
+            connection.runOnReady {
+                reset();"yanshoucijia".forEach { sendKey(it) };delay(200)
+                val original=getCandidates(0,64)
+                val index=original.indexOfFirst { it.text=="验收词甲" };assertTrue(index>=0)
+                assertTrue(getCandidateActions(index).any { it.id == -1002 })
+                triggerCandidateAction(index,-1002);delay(200)
+                val lowered=getCandidates(0,64)
+                assertTrue(lowered.indexOfFirst { it.text=="验收词甲" }>0)
+                val expected=lowered.first().text
+                val committed=async(start=CoroutineStart.UNDISPATCHED) { eventFlow.filterIsInstance<FcitxEvent.CommitStringEvent>().first() }
+                sendKey(' ')
+                assertEquals("Space selects the first displayed candidate",expected,withTimeout(5000) { committed.await() }.data.text)
+                reset();"yanshoucijia".forEach { sendKey(it) };delay(200)
+                val victim=getCandidates(0,64).indexOfFirst { it.text=="验收词甲" };assertTrue(victim>=0)
+                triggerCandidateAction(victim,-1001);delay(200)
+                assertFalse(getCandidates(0,64).any { it.text=="验收词甲" })
+                reset()
+                activateIme("anthy")
+                "nihongo".forEach { sendKey(it);sendKey(it,up=true) };delay(200)
+                val japanese=getCandidates(0,64)
+                assertTrue(japanese.size>1)
+                val word=japanese.first().text
+                triggerCandidateAction(0,-1002);delay(200)
+                assertNotEquals(word,getCandidates(0,64).first().text)
+                sendKey(' ');sendKey(' ',up=true);delay(200)
+                assertTrue("Japanese space keeps its conversion candidates visible",getCandidates(0,64).isNotEmpty())
+                assertNotEquals(word,getCandidates(0,64).first().text)
+                reset();activateIme("rime")
+            }
+        } finally {
+            baseline?.let { WordLibrary.restore(connection,it,false) }
+            created.forEach { WordLibrary.delete(it) }
+            FcitxDaemon.disconnect("experience-test")
+        }
+    }
+    @Test fun privateAiDraftsStayOutOfSavedHistory() {
+        val previous=PrivacyMode.enabled
+        try {
+            if(!PrivacyMode.enabled) PrivacyMode.toggle()
+            val session=AiStore.current().copy(draft="private draft",messages=listOf(AiStore.Message("user","private question")))
+            AiStore.save(session)
+            assertFalse(AiStore.all().any { it.id==session.id })
+            assertEquals("private draft",AiStore.current().draft)
+            PrivacyMode.toggle();AiStore.discardTemporary()
+            PrivacyMode.toggle()
+            assertNotEquals(session.id,AiStore.current().id)
+        } finally { AiStore.discardTemporary();if(PrivacyMode.enabled!=previous) PrivacyMode.toggle() }
+    }
+}

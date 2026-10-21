@@ -8,8 +8,8 @@ import org.fcitx.fcitx5.android.utils.appContext
 import org.fcitx.fcitx5.android.data.prefs.AppPrefs
 
 object ToolbarLayout {
-    val defaults = listOf(Type.Undo, Type.Redo, Type.SavedContent, Type.Clipboard)
-    val available = listOf(Type.Undo,Type.Redo,Type.SavedContent,Type.Clipboard,Type.TextEditing,Type.ThemeList,Type.InputMethod,Type.ReloadConfig,Type.Keyboard)
+    val defaults = listOf(Type.Undo, Type.Redo, Type.SavedContent, Type.Clipboard, Type.AiAssistant)
+    val available = listOf(Type.Undo,Type.Redo,Type.SavedContent,Type.Clipboard,Type.AiAssistant,Type.TextEditing,Type.ThemeList,Type.InputMethod,Type.ReloadConfig,Type.Keyboard)
     private val file get() = (appContext.getExternalFilesDir(null) ?: appContext.filesDir).resolve("data/toolbar.json")
     fun main(): List<Type> = if(file.exists() || file.resolveSibling(file.name+".bak").exists()) android.util.AtomicFile(file).openRead().bufferedReader(Charsets.UTF_8).use { Json.decodeFromString<List<String>>(it.readText()).mapNotNull { name -> available.find { it.name==name } }.distinct() } else defaults
     fun menu() = available.filterNot { it in main() } + listOf(Type.KeyMacros,Type.ToolbarLayout)

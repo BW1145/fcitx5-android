@@ -102,6 +102,7 @@ class CommonKeyActionListener :
                     service.postInputJob(target) {
                         for (step in action.steps) {
                             when (step.action) {
+                                "privacy" -> service.onInputTarget(target) { service.togglePrivacyMode() }
                                 "clear" -> {
                                     reset()
                                     service.awaitInputEvents(this)
@@ -227,6 +228,7 @@ class CommonKeyActionListener :
                 is SpaceLongPressAction -> {
                     when (spaceKeyLongPressBehavior) {
                         SpaceLongPressBehavior.None -> {}
+                        SpaceLongPressBehavior.Privacy -> service.togglePrivacyMode()
                         SpaceLongPressBehavior.Enumerate -> service.postInputJob(target) {
                             enumerateIme()
                         }

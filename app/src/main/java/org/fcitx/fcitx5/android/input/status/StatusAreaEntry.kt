@@ -21,7 +21,7 @@ sealed class StatusAreaEntry(
             ReloadConfig,
             Keyboard,
             ThemeList,
-            TextEditing, Undo, Redo, SavedContent, Clipboard, KeyMacros, ToolbarLayout
+            TextEditing, Undo, Redo, SavedContent, Clipboard, KeyMacros, ToolbarLayout, AiAssistant
         }
     }
 

@@ -26,6 +26,16 @@ abstract class ManagedPreferenceFragment(private val preferenceProvider: Managed
 
     open fun onPreferenceUiCreated(screen: PreferenceScreen) {}
 
+    override fun onResume() {
+        super.onResume()
+        org.fcitx.fcitx5.android.ui.main.settings.SettingFocus.key?.let { key ->
+            if (findPreference<Preference>(key) != null) {
+                scrollToPreference(key)
+                org.fcitx.fcitx5.android.ui.main.settings.SettingFocus.key = null
+            }
+        }
+    }
+
     @CallSuper
     override fun onCreatePreferences(savedInstanceState: Bundle?, rootKey: String?) {
         evaluator.evaluateVisibility()

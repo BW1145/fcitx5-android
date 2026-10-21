@@ -166,6 +166,7 @@ class TextKeyboard(
 
     override fun onInputMethodUpdate(ime: InputMethodEntry) {
         space.mainText.text = buildString {
+            if (org.fcitx.fcitx5.android.data.PrivacyMode.enabled) append("隐私 · ")
             append(ime.displayName)
             ime.subMode.run { label.ifEmpty { name.ifEmpty { null } } }?.let { append(" ($it)") }
         }

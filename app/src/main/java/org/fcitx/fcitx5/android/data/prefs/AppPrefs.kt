@@ -175,7 +175,7 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
         val spaceKeyLongPressBehavior = enumList(
             R.string.space_long_press_behavior,
             "space_long_press_behavior",
-            SpaceLongPressBehavior.None
+            SpaceLongPressBehavior.Privacy
         )
         val spaceSwipeMoveCursor =
             switch(R.string.space_swipe_move_cursor, "space_swipe_move_cursor", true)
@@ -255,7 +255,7 @@ class AppPrefs(private val sharedPreferences: SharedPreferences) {
         val expandedCandidateStyle = enumList(
             R.string.expanded_candidate_style,
             "expanded_candidate_style",
-            ExpandedCandidateStyle.Grid
+            ExpandedCandidateStyle.Flexbox
         )
 
         val expandedCandidateGridSpanCount: ManagedPreference.PInt

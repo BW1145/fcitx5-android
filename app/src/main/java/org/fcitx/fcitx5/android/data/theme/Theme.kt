@@ -56,6 +56,10 @@ sealed class Theme : Parcelable {
     abstract val genericActiveForegroundColor: Int
 
     open fun backgroundDrawable(keyBorder: Boolean = false): Drawable {
+        ArtStyle.of(this)?.let {
+            return ArtDrawable(this, it, ArtDrawable.Surface.Backdrop, backgroundColor,
+                appContext.resources.displayMetrics.density)
+        }
         return ColorDrawable(if (keyBorder) backgroundColor else keyboardColor)
     }
 

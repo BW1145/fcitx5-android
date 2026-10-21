@@ -34,6 +34,11 @@ output = Path(sys.argv[1])
 group = sys.argv[2]
 prefix = "org.fcitx.fcitx5.android."
 methods = {
+    "PersonalExperienceTest": {
+        "artThemesRenderDifferentCompleteKeyboards",
+        "wordSnapshotsAndCandidateActionsPreserveSelection",
+        "privateAiDraftsStayOutOfSavedHistory",
+    },
     "PersonalRimeTest": {
         "keyContentSizeScalesTextAndIconsAcrossOrientations",
         "freshInstallProvidesOfflinePinyinAndKeepsUserConfig",
@@ -202,6 +207,7 @@ for plugin in chewing clipboard-filter; do
 done
 
 run_group personal-native 'org.fcitx.fcitx5.android.PersonalRimeTest,org.fcitx.fcitx5.android.PersonalDataSafetyTest,org.fcitx.fcitx5.android.PersonalPluginContractTest'
+run_group personal-experience 'org.fcitx.fcitx5.android.PersonalExperienceTest'
 run_group personal-keyboard 'org.fcitx.fcitx5.android.PersonalKeyboardUiTest'
 run_group personal-search 'org.fcitx.fcitx5.android.PersonalContentSearchTest'
 

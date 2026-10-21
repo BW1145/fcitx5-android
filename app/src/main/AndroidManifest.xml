@@ -12,10 +12,13 @@
         tools:node="remove" />
 
     <uses-permission android:name="android.permission.VIBRATE" />
+    <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
     <!-- Keep our discovery queries while replacing unused library queries. -->
     <queries tools:node="replace">
+        <intent><action android:name="android.speech.RecognitionService" /></intent>
         <intent>
             <action android:name="${applicationId}.plugin.MANIFEST" />
         </intent>
@@ -45,6 +48,10 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.FcitxAppTheme"
         tools:targetApi="33">
+        <activity android:name=".ui.main.HapticsActivity" android:exported="false" />
+        <activity android:name=".ui.main.SpeechTestActivity" android:exported="false" />
+        <activity android:name=".ui.main.AiSettingsActivity" android:exported="false" />
+        <activity android:name=".ui.main.WordLibraryActivity" android:exported="false" />
         <activity android:name=".ui.main.KeyMacroActivity" android:configChanges="orientation|screenSize" android:exported="false" />
         <activity android:name=".ui.main.ToolbarActivity" android:exported="false" />
         <activity

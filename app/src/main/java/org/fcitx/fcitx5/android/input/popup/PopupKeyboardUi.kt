@@ -9,6 +9,8 @@ import android.graphics.Rect
 import android.graphics.drawable.GradientDrawable
 import android.view.ViewOutlineProvider
 import org.fcitx.fcitx5.android.data.theme.Theme
+import org.fcitx.fcitx5.android.data.theme.ArtStyle
+import org.fcitx.fcitx5.android.data.theme.ArtDrawable
 import org.fcitx.fcitx5.android.input.AutoScaleTextView
 import org.fcitx.fcitx5.android.input.keyboard.KeyAction
 import splitties.dimensions.dp
@@ -72,12 +74,15 @@ class PopupKeyboardUi(
         }
     }
 
-    private val inactiveBackground = GradientDrawable().apply {
+    private val inactiveBackground = ArtStyle.of(theme)?.let { ArtDrawable(theme,it,
+        ArtDrawable.Surface.Panel,theme.popupBackgroundColor,ctx.resources.displayMetrics.density) } ?: GradientDrawable().apply {
         cornerRadius = radius
         setColor(theme.popupBackgroundColor)
     }
 
-    private val focusBackground = GradientDrawable().apply {
+    private val focusBackground = ArtStyle.of(theme)?.let { ArtDrawable(theme,it,
+        ArtDrawable.Surface.Key,theme.genericActiveBackgroundColor,ctx.resources.displayMetrics.density,
+        pressed=true) } ?: GradientDrawable().apply {
         cornerRadius = radius
         setColor(theme.genericActiveBackgroundColor)
     }

@@ -61,6 +61,11 @@ class SavedContentWindow : InputWindow.ExtendedInputWindow<SavedContentWindow>()
                     setColor(theme.keyBackgroundColor)
                     cornerRadius = context.dp(8f)
                 }
+                org.fcitx.fcitx5.android.data.theme.ArtStyle.of(theme)?.let {
+                    background=org.fcitx.fcitx5.android.data.theme.ArtDrawable(theme,it,
+                        org.fcitx.fcitx5.android.data.theme.ArtDrawable.Surface.Key,
+                        theme.keyBackgroundColor,resources.displayMetrics.density)
+                }
                 layoutParams = LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(8) }
                 setOnClickListener {
                     service.postFcitxJob {

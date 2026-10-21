@@ -9,6 +9,7 @@ import android.view.View
 import android.widget.ViewAnimator
 import androidx.transition.Fade
 import androidx.transition.TransitionManager
+import org.fcitx.fcitx5.android.data.theme.panelDrawable
 import org.fcitx.fcitx5.android.R
 import org.fcitx.fcitx5.android.data.prefs.AppPrefs
 import org.fcitx.fcitx5.android.data.theme.Theme
@@ -48,7 +49,7 @@ class ClipboardUi(override val ctx: Context, private val theme: Theme) : Ui {
 
     override val root = coordinatorLayout {
         if (!keyBorder) {
-            backgroundColor = theme.barColor
+            background = theme.panelDrawable(resources.displayMetrics.density)
         }
         add(viewAnimator, defaultLParams(matchParent, matchParent))
     }

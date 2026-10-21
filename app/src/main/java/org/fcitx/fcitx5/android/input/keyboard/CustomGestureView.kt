@@ -26,6 +26,9 @@ open class CustomGestureView(ctx: Context) : FrameLayout(ctx) {
 
     enum class GestureType { Down, Move, Up }
 
+    enum class Feedback { Hold, Gesture }
+    var onVisualFeedback: ((Feedback) -> Unit)? = null
+
     data class Event(
         val type: GestureType,
         val consumed: Boolean,
@@ -168,6 +171,7 @@ open class CustomGestureView(ctx: Context) : FrameLayout(ctx) {
                     longPressJob?.cancel()
                     longPressJob = lifecycleScope.launch {
                         delay(longPressDelay.toLong())
+                        onVisualFeedback?.invoke(Feedback.Hold)
                         if (longPressFeedbackEnabled) {
                             InputFeedbacks.hapticFeedback(this@CustomGestureView, true)
                         }
@@ -179,6 +183,7 @@ open class CustomGestureView(ctx: Context) : FrameLayout(ctx) {
                     repeatJob = lifecycleScope.launch {
                         delay(longPressDelay.toLong())
                         repeatStarted = true
+                        if (!longPressEnabled) onVisualFeedback?.invoke(Feedback.Hold)
                         var lastTriggerTime: Long
                         while (isActive && isEnabled) {
                             lastTriggerTime = SystemClock.uptimeMillis()
@@ -265,6 +270,7 @@ open class CustomGestureView(ctx: Context) : FrameLayout(ctx) {
         val consumed = onGestureListener?.onGesture(this, event) ?: return
         if (consumed && !gestureConsumed) {
             gestureConsumed = true
+            if (swipeTotalX != 0 || swipeTotalY != 0) onVisualFeedback?.invoke(Feedback.Gesture)
             if (swipeAfterRepeatEnabled) {
                 repeatJob?.cancel()
                 repeatJob = null

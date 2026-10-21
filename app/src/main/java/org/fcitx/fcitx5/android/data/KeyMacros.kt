@@ -12,7 +12,7 @@ object KeyMacros {
     @Serializable data class Binding(val key: String, val trigger: String, val steps: List<Step>)
     val keys = (('a'..'z') + ('0'..'9')).map { it.toString() } + listOf("backspace", "space", "return", "caps", "language", "symbols", ",", ".")
     val triggers = listOf("tap", "hold", "up", "down", "left", "right")
-    val actions = listOf("text", "key", "selectAll", "copy", "paste", "cut", "undo", "redo", "clear")
+    val actions = listOf("text", "key", "selectAll", "copy", "paste", "cut", "undo", "redo", "clear", "privacy")
     private val json = Json { prettyPrint = true }
     private val file get() = (appContext.getExternalFilesDir(null) ?: appContext.filesDir).resolve("data/key-macros.json")
     private val defaultBindings = listOf(Binding("backspace", "up", listOf(Step("clear"))))

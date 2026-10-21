@@ -185,6 +185,10 @@ class KeyboardPreviewUi(override val ctx: Context, val theme: Theme) : Ui {
             fakeInputView.removeView(fakeKeyboardWindow)
         }
         fakeKawaiiBar.backgroundColor = if (keyBorder) Color.TRANSPARENT else theme.barColor
+        if (org.fcitx.fcitx5.android.data.theme.ArtStyle.of(theme) != null)
+            fakeKawaiiBar.background = org.fcitx.fcitx5.android.data.theme.ArtDrawable(theme,
+                org.fcitx.fcitx5.android.data.theme.ArtStyle.of(theme)!!,
+                org.fcitx.fcitx5.android.data.theme.ArtDrawable.Surface.Panel,theme.barColor,ctx.resources.displayMetrics.density)
         fakeKeyboardWindow = TextKeyboard(ctx, theme).also {
             it.onAttach()
         }

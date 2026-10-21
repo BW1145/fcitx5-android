@@ -29,6 +29,9 @@ import org.fcitx.fcitx5.android.data.prefs.AppPrefs
 import org.fcitx.fcitx5.android.data.prefs.ManagedPreference
 import org.fcitx.fcitx5.android.R
 import org.fcitx.fcitx5.android.data.theme.Theme
+import org.fcitx.fcitx5.android.data.theme.ArtStyle
+import org.fcitx.fcitx5.android.data.theme.ArtDrawable
+import org.fcitx.fcitx5.android.data.theme.ArtFeedbackDrawable
 import org.fcitx.fcitx5.android.data.theme.ThemeManager
 import org.fcitx.fcitx5.android.data.theme.ThemePrefs.PunctuationPosition
 import org.fcitx.fcitx5.android.input.AutoScaleTextView
@@ -71,17 +74,17 @@ abstract class KeyView(ctx: Context, val theme: Theme, val def: KeyDef.Appearanc
 
     init {
         val prefs = ThemeManager.prefs
-        bordered = prefs.keyBorder.getValue()
+        bordered = ArtStyle.of(theme) != null || prefs.keyBorder.getValue()
         borderStroke = prefs.keyBorderStroke.getValue()
         rippled = prefs.keyRippleEffect.getValue()
-        radius = dp(prefs.keyRadius.getValue().toFloat())
+        radius = dp(ArtStyle.of(theme)?.radius ?: prefs.keyRadius.getValue().toFloat())
         val landscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
         val hMarginPref =
             if (landscape) prefs.keyHorizontalMarginLandscape else prefs.keyHorizontalMargin
         val vMarginPref =
             if (landscape) prefs.keyVerticalMarginLandscape else prefs.keyVerticalMargin
-        hMargin = if (def.margin) dp(hMarginPref.getValue()) else 0
-        vMargin = if (def.margin) dp(vMarginPref.getValue()) else 0
+        hMargin = if (def.margin) dp(if(ArtStyle.of(theme)!=null) 3 else hMarginPref.getValue()) else 0
+        vMargin = if (def.margin) dp(if(ArtStyle.of(theme)!=null) 5 else vMarginPref.getValue()) else 0
     }
 
     private val cachedLocation = intArrayOf(0, 0)
@@ -137,6 +140,15 @@ abstract class KeyView(ctx: Context, val theme: Theme, val def: KeyDef.Appearanc
                 scale = min(scale, max(1f, fit))
             }
             val checkpoint = canvas.save()
+            if (isPressed) ArtStyle.of(theme)?.let {
+                val travel = when (it) {
+                    ArtStyle.Nouveau -> .6f
+                    ArtStyle.Constructivism -> 1.2f
+                    ArtStyle.Riso -> .4f
+                    ArtStyle.Aero -> .8f
+                }
+                canvas.translate(if (it == ArtStyle.Riso) -dp(.4f) else 0f, dp(travel))
+            }
             canvas.scale(scale, scale, centerX, centerY)
             super.dispatchDraw(canvas)
             canvas.restoreToCount(checkpoint)
@@ -188,6 +200,26 @@ abstract class KeyView(ctx: Context, val theme: Theme, val def: KeyDef.Appearanc
             }
         }
         add(appearanceView, lParams(matchParent, matchParent))
+        ArtStyle.of(theme)?.let { style ->
+            val fill = when (def.variant) {
+                Variant.Accent -> theme.accentKeyBackgroundColor
+                Variant.Alternative -> theme.altKeyBackgroundColor
+                else -> theme.keyBackgroundColor
+            }
+            val surface = if (def.viewId == R.id.button_space) ArtDrawable.Surface.Space else ArtDrawable.Surface.Key
+            appearanceView.background = StateListDrawable().apply {
+                addState(intArrayOf(android.R.attr.state_pressed), ArtDrawable(theme,style,surface,fill,
+                    resources.displayMetrics.density,hMargin.toFloat(),vMargin.toFloat(),true))
+                addState(intArrayOf(), ArtDrawable(theme,style,surface,fill,
+                    resources.displayMetrics.density,hMargin.toFloat(),vMargin.toFloat()))
+            }
+            val feedback = ArtFeedbackDrawable(style, resources.displayMetrics.density,
+                hMargin.toFloat(),vMargin.toFloat())
+            appearanceView.foreground = feedback
+            onVisualFeedback = { feedback.signal(if (it == Feedback.Hold)
+                ArtFeedbackDrawable.Action.Hold else ArtFeedbackDrawable.Action.Gesture) }
+            appearanceView.setPadding(0,0,0,0)
+        }
     }
 
     private fun setupPressHighlight(mask: Drawable? = null) {
@@ -305,6 +337,7 @@ open class TextKeyView(ctx: Context, theme: Theme, def: KeyDef.Appearance.Text) 
         textDirection = View.TEXT_DIRECTION_FIRST_STRONG_LTR
         // keep original typeface, apply textStyle only
         setTypeface(typeface, def.textStyle)
+        ArtStyle.of(theme)?.let { typeface = Typeface.create(it.font, it.weight) }
         setTextColor(
             when (def.variant) {
                 Variant.Normal -> theme.keyTextColor

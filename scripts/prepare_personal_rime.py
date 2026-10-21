@@ -24,7 +24,35 @@ def replace(path, old, new):
         raise ValueError(f"Source changed: {path.name}")
     path.write_text(text.replace(old, new), encoding="utf-8", newline="\n")
 
+def patch_anthy_bridge(source):
+    replace(source / "engine.h", '#include "action.h"',
+            '#include "action.h"\n#include "personal-anthy-public.h"')
+    replace(source / "engine.h", '    auto state(fcitx::InputContext *ic)',
+            '    void personalSelectPreview(fcitx::InputContext *ic, const std::string &text);\n'
+            '    FCITX_ADDON_EXPORT_FUNCTION(AnthyEngine, personalSelectPreview);\n'
+            '    auto state(fcitx::InputContext *ic)')
+    replace(source / "state.h", '    void selectCandidate(unsigned int item);',
+            '''    void selectCandidate(unsigned int item);
+    void selectPreferredPreview(const std::string &text) {
+        if (!preedit_.isConverting()) action_convert();
+        auto candidates = preedit_.candidates();
+        for (int i = 0; candidates && i < candidates->totalSize(); ++i) {
+            if (candidates->candidateFromAll(i).text().toString() == text) {
+                selectCandidateNoDirect(i);
+                updateUI();
+                return;
+            }
+        }
+    }''')
+    with (source / "engine.cpp").open("a", encoding="utf-8", newline="\n") as output:
+        output.write('''
+void AnthyEngine::personalSelectPreview(fcitx::InputContext *ic, const std::string &text) {
+    state(ic)->selectPreferredPreview(text);
+}
+''')
+
 def patch_sources():
+    patch_anthy_bridge(ROOT / "plugin/anthy/src/main/cpp/fcitx5-anthy/src")
     rime = WORK / "librime"
     # Android uses the existing static Lua build.
     lua = WORK / "librime-lua/CMakeLists.txt"

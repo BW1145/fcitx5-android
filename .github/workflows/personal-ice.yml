@@ -27,8 +27,8 @@ jobs:
       - id: version
         name: Choose one version for all delivered APKs
         run: |
-          echo "name=1.1.$GITHUB_RUN_NUMBER" >> "$GITHUB_OUTPUT"
-          echo "code=$((1000 + GITHUB_RUN_NUMBER))" >> "$GITHUB_OUTPUT"
+          echo "name=1.2.$GITHUB_RUN_NUMBER" >> "$GITHUB_OUTPUT"
+          echo "code=$((2000 + GITHUB_RUN_NUMBER))" >> "$GITHUB_OUTPUT"
           echo "timestamp=$(date +%s000)" >> "$GITHUB_OUTPUT"
 
   build:
@@ -63,7 +63,7 @@ jobs:
           SIGN_KEY_PWD: ${{ secrets.PERSONAL_SIGNING_PASSWORD }}
           SIGN_KEY_ALIAS: personal
         run: |
-          ./gradlew -PbuildABI=arm64-v8a :app:assembleRelease :plugin:chewing:assembleRelease :plugin:clipboard-filter:assembleRelease
+          ./gradlew -PbuildABI=arm64-v8a -PpersonalPackaging=full :app:assembleRelease :plugin:chewing:assembleRelease :plugin:clipboard-filter:assembleRelease
       - name: Verify final versions, plugin manifests and the existing signing identity
         env:
           GH_TOKEN: ${{ github.token }}
@@ -174,6 +174,7 @@ jobs:
           path: |
             app/build/reports/androidTests/
             app/build/outputs/androidTest-results/
+            app/build/reports/theme-previews/
       - name: Keep the verified APKs for Android 6 compatibility testing
         run: |
           mkdir -p test-apks
@@ -281,18 +282,26 @@ jobs:
           cat > notes.md <<'EOF'
           小企鹅输入法定制版，适用于 arm64 安卓设备，主包内置 Rime、雾凇全拼、离线模型及 Anthy 日语。
 
-          本次新增轻量版：
-          - fcitx5-custom-arm64.apk：保留全部原有数据的完整版。
-          - fcitx5-custom-lite-arm64.apk：保留 Rime、雾凇全部词库、Octagram、Predict、Anthy 日语及现有工具功能；仅移除 Fcitx 备用拼音数据和随包码表。
-          - 两版共用原包名、签名和版本号，支持覆盖安装和互相切换；用户词库、自定义设置及已安装插件沿用。
-          - 轻量版不内置 Fcitx 自带拼音、双拼、二笔、五笔和自然码数据；使用这些方案的用户请选择完整版。
-          - 原生库和所有保留的数据经过逐文件一致性核对，实测安装包大小见 apk-size-comparison.json。
+          新版输入体验：
+          - 设置按用途分类，支持名称和用途搜索、直接定位；提供触感预设、自定义强度和时长及试打。
+          - 新艺术、构成主义、孔版印刷、Frutiger Aero 四种主题覆盖键盘、候选、剪贴板及 AI 面板。
+          - 候选长按提供忘记和降低优先级；我的词库支持搜索、添加词条与恢复候选偏好。
+          - 输入习惯历史备份支持备注、词条变化、ZIP 导入导出、合并及恢复；恢复前自动保存当前状态。
+          - AI 工具提供紧凑及展开问答、本地会话、常用指令和固定提示词；支持 OpenAI 兼容、Anthropic、Gemini API，服务由用户配置。
+          - 长按空格可切换隐私模式，暂停学习及剪贴板自动记录；支持自定义宏绑定。
+          - 语音识别测试页检查设备开放的服务并尝试识别中文。
+
+          安装：
+          - 推荐 fcitx5-custom-lite-arm64.apk：保留雾凇全部词库、模型、联想、日语及全部定制功能。
+          - fcitx5-custom-arm64.apk：额外预装 Fcitx 备用拼音及码表数据。
+          - 两版沿用既有包名与签名，可覆盖安装并保留用户数据。
+          - AI 仅在主动发送或测试时联网；API Key 在本机加密，换机后重新填写。系统语音服务可能联网。
 
           可选插件：
           - fcitx5-custom-chewing-arm64.apk：Chewing 注音插件。
           - fcitx5-custom-clipboard-filter.apk：剪贴板过滤器插件。
 
-          两版均通过签名、离线数据检查、Android 15 输入回归和 Android 6 兼容回归；另外验证完整版→轻量版→完整版覆盖安装后保留用户数据。
+          发布检查覆盖签名与离线数据、协议与主题绘制、Android 15 输入及词库恢复、Android 6 兼容，以及 full/lite 覆盖切换的数据保留。
           EOF
           gh release create "custom-$BUILD_VERSION_NAME" dist/* --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --title "小企鹅输入法定制版 $BUILD_VERSION_NAME" --notes-file notes.md
 

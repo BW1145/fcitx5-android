@@ -73,6 +73,11 @@ class ClipboardEntryUi(override val ctx: Context, private val theme: Theme, radi
             cornerRadius = radius
             setColor(theme.clipboardEntryColor)
         }
+        org.fcitx.fcitx5.android.data.theme.ArtStyle.of(theme)?.let {
+            background=org.fcitx.fcitx5.android.data.theme.ArtDrawable(theme,it,
+                org.fcitx.fcitx5.android.data.theme.ArtDrawable.Surface.Key,
+                theme.clipboardEntryColor,resources.displayMetrics.density)
+        }
         add(layout, lParams(matchParent, matchParent))
     }
 

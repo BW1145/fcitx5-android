@@ -46,6 +46,9 @@ sealed class SettingsRoute : Parcelable {
     @Serializable
     data object Index : SettingsRoute()
 
+    @Serializable
+    data object Search : SettingsRoute()
+
     /* ========== Fcitx ========== */
 
     @Serializable
@@ -189,6 +192,7 @@ sealed class SettingsRoute : Parcelable {
             fragment<MainFragment, Index> {
                 label = ctx.getString(R.string.app_name)
             }
+            fragment<SettingsSearchFragment, Search> { label = "搜索设置" }
 
             /* ========== Fcitx ========== */
 

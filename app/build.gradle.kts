@@ -10,7 +10,7 @@ plugins {
 }
 
 // Packaging changes only bundled data; identity, engines and user settings stay shared.
-val personalPackaging = providers.gradleProperty("personalPackaging").orElse("full").get()
+val personalPackaging = providers.gradleProperty("personalPackaging").orElse("lite").get()
 require(personalPackaging in setOf("full", "lite")) {
     "personalPackaging must be full or lite"
 }
@@ -45,6 +45,7 @@ android {
         viewBinding = true
         resValues = true
     }
+    testOptions.unitTests.isIncludeAndroidResources = true
 
     buildTypes {
         release {
@@ -141,6 +142,7 @@ dependencies {
     implementation(libs.splitties.views.recyclerview)
     implementation(libs.aboutlibraries.core)
     testImplementation(libs.junit)
+    testImplementation("org.robolectric:robolectric:4.17")
     androidTestImplementation(libs.androidx.test.runner)
     androidTestImplementation(libs.androidx.test.rules)
     androidTestImplementation(libs.androidx.lifecycle.testing)

@@ -68,8 +68,10 @@ def verify_version(manifest, version_code, version_name):
 def verify_app_manifest(manifest, application_id, version_code, version_name):
     require(manifest.get("package") == application_id, "Unexpected application ID")
     code, name = verify_version(manifest, version_code, version_name)
-    require("android.permission.INTERNET" not in names(manifest, "uses-permission"),
-            "Unexpected internet permission")
+    require("android.permission.INTERNET" in names(manifest, "uses-permission"),
+            "Missing permission for the user-configured AI service")
+    require("android.permission.RECORD_AUDIO" in names(manifest, "uses-permission"),
+            "Missing permission for the speech service test")
     require(application_id + ".plugin.MANIFEST" in names(manifest, "queries/intent/action"),
             "The IME does not query its own plugin discovery action")
     for permission in ("IPC", "PLUGIN"):
