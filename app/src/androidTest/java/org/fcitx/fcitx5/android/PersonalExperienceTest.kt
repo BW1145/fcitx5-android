@@ -84,6 +84,31 @@ class PersonalExperienceTest {
             assertEquals(first.count,imported.count)
     }
 
+    @Test fun batchWordManagementPreservesUnselectedRules()=withWordFixture { connection ->
+        WordLibrary.add(connection,"rime_ice","验收词乙","yan shou ci yi",1000)
+        val words=WordLibrary.words(connection)
+        val first=words.first { it.text=="验收词甲" }
+        val second=words.first { it.text=="验收词乙" }
+        val lowered=WordLibrary.applyWordActions(connection,listOf(first,second,first),WordLibrary.WordAction.LOWER)
+        assertTrue(lowered.failed.isEmpty())
+        assertEquals(2,lowered.succeeded.size)
+        assertTrue(WordLibrary.rules().any { it.text==first.text && it.mode=="lower" })
+        assertTrue(WordLibrary.rules().any { it.text==second.text && it.mode=="lower" })
+        val forgotten=WordLibrary.applyWordActions(connection,listOf(first),WordLibrary.WordAction.FORGET)
+        assertTrue(forgotten.failed.isEmpty())
+        connection.runOnReady {
+            reset();"yanshoucijia".forEach { sendKey(it) };delay(200)
+            assertFalse(getCandidates(0,64).any { it.text==first.text })
+        }
+        val selectedRules=WordLibrary.rules().filter { it.text==first.text }
+        assertTrue(selectedRules.isNotEmpty())
+        assertTrue(selectedRules.all { it.mode=="hide" })
+        val restored=WordLibrary.restoreRules(connection,selectedRules)
+        assertTrue(restored.failed.isEmpty())
+        assertFalse(WordLibrary.rules().any { it.text==first.text })
+        assertTrue(WordLibrary.rules().any { it.text==second.text && it.mode=="lower" })
+    }
+
     @Test fun chineseCandidateActionsPreserveSelection()=withWordFixture { connection ->
         connection.runOnReady {
                 reset();"yanshoucijia".forEach { sendKey(it) };delay(200)

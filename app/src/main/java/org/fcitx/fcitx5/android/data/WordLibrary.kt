@@ -5,6 +5,8 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -25,6 +27,52 @@ object WordLibrary {
     fun notifyRulesChanged() { changes.tryEmit(Unit) }
     private val access=Mutex()
     data class Word(val dictionary:String,val text:String,val reading:String,val weight:String)
+    enum class WordAction { FORGET, LOWER }
+    data class BatchFailure<T>(val item:T,val message:String)
+    data class BatchResult<T>(val succeeded:List<T>,val failed:List<BatchFailure<T>>)
+
+    /** Keep per-record results so a failed item does not discard completed work. */
+    suspend fun applyWordActions(connection:FcitxConnection,words:List<Word>,action:WordAction):BatchResult<Word> = withContext(Dispatchers.IO) {
+        val succeeded=mutableListOf<Word>()
+        val failed=mutableListOf<BatchFailure<Word>>()
+        val pendingRules=mutableListOf<Rule>()
+        val schemas=mutableMapOf<String,List<String>>()
+        for(word in words.distinctBy { Triple(it.dictionary,it.text,it.reading) }) {
+            currentCoroutineContext().ensureActive()
+            try {
+                when(action) {
+                    WordAction.FORGET -> forget(connection,word)
+                    WordAction.LOWER -> {
+                        val engines=schemas[word.dictionary] ?: connection.runOnReady { preferenceSchemas(word.dictionary).toList() }.also { schemas[word.dictionary]=it }
+                        pendingRules+=candidateRules(word,"lower",engines)
+                    }
+                }
+                succeeded+=word
+            } catch(e:CancellationException) { throw e }
+            catch(e:Exception) { failed+=BatchFailure(word,e.message ?: "操作未完成") }
+        }
+        if(pendingRules.isNotEmpty()) {
+            try { putRules(connection,pendingRules) }
+            catch(e:CancellationException) { throw e }
+            catch(e:Exception) {
+                failed+=succeeded.map { BatchFailure(it,e.message ?: "操作未完成") }
+                succeeded.clear()
+            }
+        }
+        BatchResult(succeeded,failed)
+    }
+
+    /** Remove selected keys in one engine-thread update, preserving other rules. */
+    suspend fun restoreRules(connection:FcitxConnection,rules:List<Rule>):BatchResult<Rule> = withContext(Dispatchers.IO) {
+        val selected=rules.distinctBy { Triple(it.engine,it.reading,it.text) }
+        if(selected.isEmpty()) return@withContext BatchResult(emptyList(),emptyList())
+        val keys=selected.map { Triple(it.engine,it.reading,it.text) }.toHashSet()
+        try {
+            updateRules(connection) { current -> current.filterNot { Triple(it.engine,it.reading,it.text) in keys } }
+            BatchResult(selected,emptyList())
+        } catch(e:CancellationException) { throw e }
+        catch(e:Exception) { BatchResult(emptyList(),selected.map { BatchFailure(it,e.message ?: "操作未完成") }) }
+    }
     data class Rule(val engine:String,val reading:String,val text:String,val mode:String) {
         val line get()=listOf(engine,reading,text).joinToString("\t") { hex(it) }+"\t"+mode
     }
@@ -56,12 +104,19 @@ object WordLibrary {
     }
     suspend fun setRule(connection:FcitxConnection,word:Word,mode:String) {
         require(mode in listOf("hide","lower"))
+        val engines=connection.runOnReady { preferenceSchemas(word.dictionary).toList() }
+        putRules(connection,candidateRules(word,mode,engines))
+    }
+    private fun candidateRules(word:Word,mode:String,engines:List<String>):List<Rule> {
         val reading=word.reading.replace(" ","").replace("'","").lowercase()
-        val engines=connection.runOnReady { preferenceSchemas(word.dictionary) }
         require(engines.isNotEmpty()) { "没有找到使用此词典的拼音方案" }
-        val added=engines.map { Rule("rime:$it",reading,word.text,mode) }
+        return engines.map { Rule("rime:$it",reading,word.text,mode) }
+    }
+    private suspend fun putRules(connection:FcitxConnection,added:List<Rule>) {
+        val unique=added.distinctBy { Triple(it.engine,it.reading,it.text) }
+        val keys=unique.map { Triple(it.engine,it.reading,it.text) }.toHashSet()
         updateRules(connection) { current ->
-            current.filterNot { old -> added.any { it.engine==old.engine && it.reading==old.reading && it.text==old.text } }+added
+            current.filterNot { Triple(it.engine,it.reading,it.text) in keys }+unique
         }
     }
     private suspend fun operation(connection:FcitxConnection,name:String) {
