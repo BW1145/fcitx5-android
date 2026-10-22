@@ -37,6 +37,7 @@ methods = {
     "PersonalExperienceTest": {
         "artThemesRenderDifferentCompleteKeyboards",
         "wordSnapshotsRestoreMergeAndRoundTrip",
+        "batchWordManagementPreservesUnselectedRules",
         "chineseCandidateActionsPreserveSelection",
         "japanesePriorityPreservesConversion",
         "candidateActionsRejectAnOldListAndKeepTheCurrentComposition",
