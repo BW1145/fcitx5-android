@@ -6,6 +6,7 @@ import android.content.ComponentName
 import android.content.Intent
 import android.os.Bundle
 import android.speech.RecognitionService
+import android.util.Log
 import android.speech.SpeechRecognizer
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.rule.GrantPermissionRule
@@ -17,19 +18,6 @@ import org.junit.Test
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.TimeUnit
 
-/** Test-only service; responds to IPC without opening a microphone or network connection. */
-class SpeechFakeRecognitionService : RecognitionService() {
-    override fun onStartListening(intent: Intent, listener: Callback) {
-        if (intent.getBooleanExtra("test.error5", false)) listener.error(SpeechRecognizer.ERROR_CLIENT)
-        else {
-            listener.readyForSpeech(Bundle())
-            listener.results(Bundle().apply { putStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION, arrayListOf("测试成功")) })
-        }
-    }
-    override fun onStopListening(listener: Callback) {}
-    override fun onCancel(listener: Callback) {}
-}
-
 class SpeechServiceContractTest {
     @get:Rule val microphonePermission: GrantPermissionRule = GrantPermissionRule.grant(Manifest.permission.RECORD_AUDIO)
     @Test fun explicitFakeServiceReturnsResultsThroughAndroidBinder() = runService(false)
@@ -39,6 +27,15 @@ class SpeechServiceContractTest {
         val instrumentation = InstrumentationRegistry.getInstrumentation()
         val context = instrumentation.targetContext
         val component = ComponentName(instrumentation.context.packageName, SpeechFakeRecognitionService::class.java.name)
+        val info = context.packageManager.getServiceInfo(component, 0)
+        assertEquals(component.packageName, info.packageName)
+        assertTrue("Fake service must be exported for system-server binding", info.exported)
+        assertTrue("Fake service is disabled", info.enabled && info.applicationInfo.enabled)
+        assertEquals("android.permission.BIND_SPEECH_RECOGNITION_SERVICE", info.permission)
+        val discovered = context.packageManager.queryIntentServices(Intent(RecognitionService.SERVICE_INTERFACE), 0)
+        assertTrue("Fake service missing from target-app service discovery: $component",
+            discovered.any { ComponentName(it.serviceInfo.packageName, it.serviceInfo.name) == component })
+        Log.i("SpeechContractTest", "preflight component=$component process=${info.processName} uid=${info.applicationInfo.uid} exported=${info.exported} permission=${info.permission}")
         val completed = CountDownLatch(1)
         var message = ""
         var session: SpeechSession? = null
@@ -48,12 +45,14 @@ class SpeechServiceContractTest {
                     Intent("android.speech.action.RECOGNIZE_SPEECH").putExtra("test.error5", errorFive))
             }) { text, state ->
                 message = text
+                Log.i("SpeechContractTest", "client state=$state errorCase=$errorFive")
                 if (state == SpeechSession.State.IDLE) completed.countDown()
             }
             session!!.start(SpeechSession.Target(component.flattenToString(), "测试服务"))
         }
         try {
-            assertTrue("Fake recognition service callback timed out", completed.await(15, TimeUnit.SECONDS))
+            val received = completed.await(15, TimeUnit.SECONDS)
+            assertTrue("Fake recognition service callback timed out: component=$component state=${session?.state} lastMessage=$message; inspect speech-system-logcat.txt for service onCreate/onStartListening", received)
             if (errorFive) {
                 assertTrue(message, message.contains("错误 5"))
                 assertTrue(message, message.contains("手动选择"))

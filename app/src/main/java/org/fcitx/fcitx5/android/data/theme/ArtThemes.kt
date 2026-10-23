@@ -58,11 +58,16 @@ class ArtDrawable(
     private val paint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val box = RectF()
     private val inner = RectF()
-    private val path = Path()
+    private val shapePath = Path()
+    private val vinePaths = if (style == ArtStyle.Nouveau &&
+        (surface == Surface.Space || surface == Surface.Backdrop)) Array(7) { Path() } else emptyArray()
     private var shader: Shader? = null
     private var grain = FloatArray(0)
     private val radius get() = style.radius * density
     private val isKey get() = surface == Surface.Key || surface == Surface.Space
+
+    // Drawable can be drawn before its first non-empty bounds assignment.
+    init { cacheGeometry() }
 
     override fun onBoundsChange(bounds: Rect) {
         box.set(bounds.left + hInset, bounds.top + vInset,
@@ -81,6 +86,46 @@ class ArtDrawable(
             if (it%2 == 0) box.left + random.nextFloat()*box.width()
             else box.top + random.nextFloat()*box.height()
         } else FloatArray(0)
+        cacheGeometry()
+    }
+
+    private fun cacheGeometry() {
+        shapePath.reset()
+        when (style) {
+            ArtStyle.Aero -> shapePath.addRoundRect(inner, radius*.8f, radius*.8f, Path.Direction.CW)
+            ArtStyle.Constructivism -> if (surface != Surface.Key) {
+                shapePath.moveTo(box.right, box.top)
+                shapePath.lineTo(box.right, box.bottom)
+                shapePath.lineTo(box.right - box.width()*.22f, box.bottom)
+                shapePath.lineTo(box.right - box.width()*.10f, box.top); shapePath.close()
+            }
+            else -> Unit
+        }
+        if (vinePaths.isNotEmpty()) {
+            val w = min(box.width()*.16f, 32*density)
+            val x = box.left+6*density
+            vinePaths[0].apply {
+                reset(); moveTo(x, box.bottom-5*density)
+                cubicTo(x+w*.9f, box.bottom-box.height()*.28f, x-w*.2f, box.top+8*density,
+                    x+w*.6f, box.top+10*density)
+            }
+            for (i in 1..3) {
+                val y = box.bottom-box.height()*i/4
+                val path = vinePaths[i]
+                path.reset(); path.moveTo(x+w*.35f,y)
+                path.quadTo(x+w*.95f,y-3*density,x+w*.85f,y-11*density)
+                path.quadTo(x+w*.25f,y-8*density,x+w*.35f,y)
+            }
+            val flowerX=x+w*.6f;val flowerY=box.top+10*density
+            for (i in -1..1) {
+                val path = vinePaths[i+5]
+                path.reset();path.moveTo(flowerX,flowerY+4*density)
+                path.cubicTo(flowerX+(i*4-3)*density,flowerY,
+                    flowerX+(i*5)*density,flowerY-7*density,
+                    flowerX+(i*4+3)*density,flowerY)
+                path.quadTo(flowerX+3*density,flowerY+3*density,flowerX,flowerY+4*density)
+            }
+        }
     }
 
     private fun color(c: Int, stroke: Float = 0f) {
@@ -109,11 +154,7 @@ class ArtDrawable(
                 if (isKey) canvas.drawRect(inner, paint)
                 if (surface != Surface.Key) {
                     color(0xffe73c28.toInt())
-                    path.reset(); path.moveTo(box.right, box.top)
-                    path.lineTo(box.right, box.bottom)
-                    path.lineTo(box.right - box.width()*.22f, box.bottom)
-                    path.lineTo(box.right - box.width()*.10f, box.top); path.close()
-                    canvas.drawPath(path, paint)
+                    canvas.drawPath(shapePath, paint)
                     color(0xff171714.toInt(), 1.5f)
                     canvas.drawLine(box.left, box.bottom-2*density, box.right, box.bottom-2*density, paint)
                 }
@@ -138,8 +179,7 @@ class ArtDrawable(
                 color(0xccffffff.toInt(), 1f)
                 canvas.drawRoundRect(inner, radius*.8f, radius*.8f, paint)
                 val checkpoint = canvas.save()
-                path.reset(); path.addRoundRect(inner, radius*.8f, radius*.8f, Path.Direction.CW)
-                canvas.clipPath(path)
+                canvas.clipPath(shapePath)
                 color(if (isKey) 0x40ffffff else 0x26ffffff)
                 canvas.drawOval(inner.left-inner.width()*.15f, inner.top-inner.height()*.7f,
                     inner.right+inner.width()*.15f, inner.top+inner.height()*(if(pressed) .32f else .5f), paint)
@@ -170,27 +210,15 @@ class ArtDrawable(
             val w = min(box.width()*.16f, 32*density)
             val x = box.left+6*density
             color(0xffb7954f.toInt(), .85f)
-            path.reset(); path.moveTo(x, box.bottom-5*density)
-            path.cubicTo(x+w*.9f, box.bottom-box.height()*.28f, x-w*.2f, box.top+8*density,
-                x+w*.6f, box.top+10*density)
-            canvas.drawPath(path, paint)
+            canvas.drawPath(vinePaths[0], paint)
             for (i in 1..3) {
-                val y = box.bottom-box.height()*i/4
                 color(0xffb7954f.toInt(),.65f)
-                path.reset(); path.moveTo(x+w*.35f,y)
-                path.quadTo(x+w*.95f,y-3*density,x+w*.85f,y-11*density)
-                path.quadTo(x+w*.25f,y-8*density,x+w*.35f,y)
-                canvas.drawPath(path,paint)
+                canvas.drawPath(vinePaths[i],paint)
             }
             color(0xffa39abb.toInt())
             val flowerX=x+w*.6f;val flowerY=box.top+10*density
             for(i in -1..1) {
-                path.reset();path.moveTo(flowerX,flowerY+4*density)
-                path.cubicTo(flowerX+(i*4-3)*density,flowerY,
-                    flowerX+(i*5)*density,flowerY-7*density,
-                    flowerX+(i*4+3)*density,flowerY)
-                path.quadTo(flowerX+3*density,flowerY+3*density,flowerX,flowerY+4*density)
-                canvas.drawPath(path,paint)
+                canvas.drawPath(vinePaths[i+5],paint)
             }
             color(0xffd5bc7b.toInt(),.7f)
             canvas.drawLine(flowerX,flowerY-3*density,flowerX,flowerY+4*density,paint)

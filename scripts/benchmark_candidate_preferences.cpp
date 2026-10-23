@@ -2,6 +2,7 @@
 // Synthetic preference-only microbenchmark, NOT an Android/engine latency test.
 #include PREF_HEADER
 #include <cassert>
+#include <cstdlib>
 #include <chrono>
 #include <iostream>
 #include <iomanip>
@@ -39,12 +40,27 @@ struct Order {
         }
     }
 };
+// Preserve measured samples in acquisition order, outside the timed region.
+// Only generated fixture labels and durations are written; never candidate text.
+static void saveSamples(const std::string &name,const std::vector<double> &times) {
+    const char *path=std::getenv("CANDIDATE_SAMPLES_CSV");
+    if (!path) return;
+    static std::ofstream output(path,std::ios::trunc);
+    static bool header=false;
+    if (!output) throw std::runtime_error("Unable to write native benchmark samples");
+    if (!header) { output<<"workload,sample_index,duration_us\n";header=true; }
+    output<<std::setprecision(9);
+    for (size_t i=0;i<times.size();++i) output<<name<<','<<i<<','<<times[i]<<'\n';
+    output.flush();
+    if (!output) throw std::runtime_error("Unable to flush native benchmark samples");
+}
 template<class F> void timing(const std::string &name,F fn,int repeats=301) {
     std::vector<double> times;
     for(int i=0;i<repeats+20;++i) {
         auto begin=Clock::now();fn();auto end=Clock::now();
         if(i>=20) times.push_back(std::chrono::duration<double,std::micro>(end-begin).count());
     }
+    saveSamples(name,times);
     std::sort(times.begin(),times.end());
     std::cout<<"timing "<<name<<" p50_us="<<times[times.size()/2]
              <<" p95_us="<<times[(times.size()-1)*95/100]<<" n="<<times.size()<<'\n';
@@ -55,6 +71,7 @@ template<class Setup,class F> void coldTiming(const std::string &name,Setup setu
         setup();auto start=Clock::now();fn();auto end=Clock::now();
         if(run>=10) times.push_back(std::chrono::duration<double,std::micro>(end-start).count());
     }
+    saveSamples(name,times);
     std::sort(times.begin(),times.end());
     std::cout<<"timing "<<name<<" p50_us="<<times[25]<<" p95_us="<<times[47]<<" n=51\n";
 }

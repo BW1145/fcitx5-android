@@ -81,3 +81,7 @@ for v in baseline current; do
     build/candidate-benchmark/$v build/candidate-benchmark/probe-$v --migration-probe
 done
 ```
+
+## Raw timing samples
+
+The runner also retains `baseline-samples.csv` and `current-samples.csv` in the build report directory and CI artifacts. Each row contains the synthetic workload name, acquisition-order sample index and duration in microseconds, before percentile sorting. Warmup samples are excluded as specified above. CSV writing happens outside timed regions; no candidate text or user data is written.

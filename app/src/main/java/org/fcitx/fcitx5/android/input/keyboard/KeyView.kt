@@ -122,15 +122,16 @@ abstract class KeyView(ctx: Context, val theme: Theme, val def: KeyDef.Appearanc
         override fun dispatchDraw(canvas: Canvas) {
             val centerX = width / 2f
             val centerY = height / 2f
+            var scale = contentSize.getValue() / 23f
             var halfWidth = 0f
             var halfHeight = 0f
-            for (i in 0 until childCount) {
+            // Child bounds only constrain enlarged content.
+            if (scale > 1f) for (i in 0 until childCount) {
                 val child = getChildAt(i)
                 if (child.visibility != View.VISIBLE) continue
                 halfWidth = max(halfWidth, max(centerX - child.left, child.right - centerX))
                 halfHeight = max(halfHeight, max(centerY - child.top, child.bottom - centerY))
             }
-            var scale = contentSize.getValue() / 23f
             if (scale > 1f && halfWidth > 0f && halfHeight > 0f) {
                 val roundReturn = !bordered && def.viewId == R.id.button_return
                 val radius = min(min(width, height), dp(35)) / 2f
@@ -139,8 +140,13 @@ abstract class KeyView(ctx: Context, val theme: Theme, val def: KeyDef.Appearanc
                 val fit = min(availableWidth / halfWidth, availableHeight / halfHeight)
                 scale = min(scale, max(1f, fit))
             }
+            val pressedStyle = if (isPressed) ArtStyle.of(theme) else null
+            if (scale == 1f && pressedStyle == null) {
+                super.dispatchDraw(canvas)
+                return
+            }
             val checkpoint = canvas.save()
-            if (isPressed) ArtStyle.of(theme)?.let {
+            pressedStyle?.let {
                 val travel = when (it) {
                     ArtStyle.Nouveau -> .6f
                     ArtStyle.Constructivism -> 1.2f

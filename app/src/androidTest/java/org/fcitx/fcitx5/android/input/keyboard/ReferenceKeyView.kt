@@ -1,0 +1,357 @@
+/*
+ * SPDX-License-Identifier: LGPL-2.1-or-later
+ * SPDX-FileCopyrightText: Copyright 2021-2023 Fcitx5 for Android Contributors
+ */
+package org.fcitx.fcitx5.android.input.keyboard
+
+import android.annotation.SuppressLint
+import android.content.Context
+import android.content.res.ColorStateList
+import android.content.res.Configuration
+import android.graphics.Color
+import android.graphics.Canvas
+import android.graphics.Rect
+import android.graphics.Typeface
+import android.graphics.drawable.ColorDrawable
+import android.graphics.drawable.Drawable
+import android.graphics.drawable.InsetDrawable
+import android.graphics.drawable.RippleDrawable
+import android.graphics.drawable.StateListDrawable
+import android.util.TypedValue
+import android.view.View
+import android.widget.ImageView
+import androidx.annotation.ColorInt
+import androidx.annotation.DrawableRes
+import androidx.annotation.FloatRange
+import androidx.constraintlayout.widget.ConstraintLayout
+import androidx.core.view.updateLayoutParams
+import org.fcitx.fcitx5.android.data.prefs.AppPrefs
+import org.fcitx.fcitx5.android.data.prefs.ManagedPreference
+import org.fcitx.fcitx5.android.R
+import org.fcitx.fcitx5.android.data.theme.Theme
+import org.fcitx.fcitx5.android.data.theme.ArtStyle
+import org.fcitx.fcitx5.android.data.theme.ArtDrawable
+import org.fcitx.fcitx5.android.data.theme.ArtFeedbackDrawable
+import org.fcitx.fcitx5.android.data.theme.ThemeManager
+import org.fcitx.fcitx5.android.data.theme.ThemePrefs.PunctuationPosition
+import org.fcitx.fcitx5.android.input.AutoScaleTextView
+import org.fcitx.fcitx5.android.input.keyboard.KeyDef.Appearance.Border
+import org.fcitx.fcitx5.android.input.keyboard.KeyDef.Appearance.Variant
+import org.fcitx.fcitx5.android.utils.styledFloat
+import org.fcitx.fcitx5.android.utils.unset
+import splitties.dimensions.dp
+import splitties.views.dsl.constraintlayout.centerHorizontally
+import splitties.views.dsl.constraintlayout.centerInParent
+import splitties.views.dsl.constraintlayout.lParams
+import splitties.views.dsl.constraintlayout.parentId
+import splitties.views.dsl.core.add
+import splitties.views.dsl.core.imageView
+import splitties.views.dsl.core.lParams
+import splitties.views.dsl.core.matchParent
+import splitties.views.dsl.core.view
+import splitties.views.dsl.core.wrapContent
+import splitties.views.existingOrNewId
+import splitties.views.imageResource
+import splitties.views.padding
+import kotlin.math.min
+import kotlin.math.max
+import kotlin.math.roundToInt
+
+internal abstract class ReferenceKeyView(ctx: Context, val theme: Theme, val def: KeyDef.Appearance) :
+    CustomGestureView(ctx) {
+
+    private val contentSize = AppPrefs.getInstance().keyboard.keyContentSize
+    private val contentSizeListener = ManagedPreference.OnChangeListener<Int> { _, _ ->
+        appearanceView.invalidate()
+    }
+
+    val bordered: Boolean
+    val borderStroke: Boolean
+    val rippled: Boolean
+    val radius: Float
+    val hMargin: Int
+    val vMargin: Int
+
+    init {
+        val prefs = ThemeManager.prefs
+        bordered = ArtStyle.of(theme) != null || prefs.keyBorder.getValue()
+        borderStroke = prefs.keyBorderStroke.getValue()
+        rippled = prefs.keyRippleEffect.getValue()
+        radius = dp(ArtStyle.of(theme)?.radius ?: prefs.keyRadius.getValue().toFloat())
+        val landscape = resources.configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+        val hMarginPref =
+            if (landscape) prefs.keyHorizontalMarginLandscape else prefs.keyHorizontalMargin
+        val vMarginPref =
+            if (landscape) prefs.keyVerticalMarginLandscape else prefs.keyVerticalMargin
+        hMargin = if (def.margin) dp(if(ArtStyle.of(theme)!=null) 3 else hMarginPref.getValue()) else 0
+        vMargin = if (def.margin) dp(if(ArtStyle.of(theme)!=null) 5 else vMarginPref.getValue()) else 0
+    }
+
+    private val cachedLocation = intArrayOf(0, 0)
+    private val cachedBounds = Rect()
+    private var boundsValid = false
+    val bounds: Rect
+        get() = cachedBounds.also {
+            if (!boundsValid) updateBounds()
+        }
+
+    /**
+     * ReferenceKeyView content left margin, in percentage of parent width
+     */
+    @FloatRange(0.0, 1.0)
+    var layoutMarginLeft = 0f
+
+    /**
+     * ReferenceKeyView content right margin, in percentage of parent width
+     */
+    @FloatRange(0.0, 1.0)
+    var layoutMarginRight = 0f
+
+    /**
+     * [ReferenceKeyView] contains 2 parts: `TouchEventView` and `AppearanceView`.
+     *
+     * `TouchEventView` is the outer [CustomGestureView] that handles touch events.
+     *
+     * `AppearanceView` in the inner [ConstraintLayout], it can be smaller than its parent,
+     * and holds the [bounds] for popup.
+     */
+    protected val appearanceView = object : ConstraintLayout(ctx) {
+        // sync any state from parent
+        init { isDuplicateParentStateEnabled = true }
+
+        override fun dispatchDraw(canvas: Canvas) {
+            val centerX = width / 2f
+            val centerY = height / 2f
+            var halfWidth = 0f
+            var halfHeight = 0f
+            for (i in 0 until childCount) {
+                val child = getChildAt(i)
+                if (child.visibility != View.VISIBLE) continue
+                halfWidth = max(halfWidth, max(centerX - child.left, child.right - centerX))
+                halfHeight = max(halfHeight, max(centerY - child.top, child.bottom - centerY))
+            }
+            var scale = contentSize.getValue() / 23f
+            if (scale > 1f && halfWidth > 0f && halfHeight > 0f) {
+                val roundReturn = !bordered && def.viewId == R.id.button_return
+                val radius = min(min(width, height), dp(35)) / 2f
+                val availableWidth = if (roundReturn) radius else centerX - hMargin
+                val availableHeight = if (roundReturn) radius else centerY - vMargin
+                val fit = min(availableWidth / halfWidth, availableHeight / halfHeight)
+                scale = min(scale, max(1f, fit))
+            }
+            val checkpoint = canvas.save()
+            if (isPressed) ArtStyle.of(theme)?.let {
+                val travel = when (it) {
+                    ArtStyle.Nouveau -> .6f
+                    ArtStyle.Constructivism -> 1.2f
+                    ArtStyle.Riso -> .4f
+                    ArtStyle.Aero -> .8f
+                }
+                canvas.translate(if (it == ArtStyle.Riso) -dp(.4f) else 0f, dp(travel))
+            }
+            canvas.scale(scale, scale, centerX, centerY)
+            super.dispatchDraw(canvas)
+            canvas.restoreToCount(checkpoint)
+        }
+    }
+
+    override fun onAttachedToWindow() {
+        super.onAttachedToWindow()
+        contentSize.registerOnChangeListener(contentSizeListener)
+        appearanceView.invalidate()
+    }
+
+    override fun onDetachedFromWindow() {
+        contentSize.unregisterOnChangeListener(contentSizeListener)
+        super.onDetachedFromWindow()
+    }
+
+    init {
+        // trigger setEnabled(true)
+        isEnabled = true
+        isClickable = true
+        isHapticFeedbackEnabled = false
+        if (def.viewId > 0) {
+            id = def.viewId
+        }
+        // key border
+        if ((bordered && def.border != Border.Off) || def.border == Border.On) {
+            val bkgColor = when (def.variant) {
+                Variant.Normal, Variant.AltForeground -> theme.keyBackgroundColor
+                Variant.Alternative -> theme.altKeyBackgroundColor
+                Variant.Accent -> theme.accentKeyBackgroundColor
+            }
+            val borderOrShadowWidth = dp(1)
+            // background: key border
+            appearanceView.background = if (borderStroke) borderedKeyBackgroundDrawable(
+                bkgColor, theme.keyShadowColor,
+                radius, borderOrShadowWidth, hMargin, vMargin
+            ) else shadowedKeyBackgroundDrawable(
+                bkgColor, theme.keyShadowColor,
+                radius, borderOrShadowWidth, hMargin, vMargin
+            )
+            // foreground: press highlight or ripple
+            setupPressHighlight()
+        } else {
+            // normal press highlight for keys without special background
+            // special background is handled in `onSizeChanged()`
+            if (def.border != Border.Special) {
+                setupPressHighlight()
+            }
+        }
+        add(appearanceView, lParams(matchParent, matchParent))
+        ArtStyle.of(theme)?.let { style ->
+            val fill = when (def.variant) {
+                Variant.Accent -> theme.accentKeyBackgroundColor
+                Variant.Alternative -> theme.altKeyBackgroundColor
+                else -> theme.keyBackgroundColor
+            }
+            val surface = if (def.viewId == R.id.button_space) ArtDrawable.Surface.Space else ArtDrawable.Surface.Key
+            appearanceView.background = StateListDrawable().apply {
+                addState(intArrayOf(android.R.attr.state_pressed), ArtDrawable(theme,style,surface,fill,
+                    resources.displayMetrics.density,hMargin.toFloat(),vMargin.toFloat(),true))
+                addState(intArrayOf(), ArtDrawable(theme,style,surface,fill,
+                    resources.displayMetrics.density,hMargin.toFloat(),vMargin.toFloat()))
+            }
+            val feedback = ArtFeedbackDrawable(style, resources.displayMetrics.density,
+                hMargin.toFloat(),vMargin.toFloat())
+            appearanceView.foreground = feedback
+            onVisualFeedback = { feedback.signal(if (it == Feedback.Hold)
+                ArtFeedbackDrawable.Action.Hold else ArtFeedbackDrawable.Action.Gesture) }
+            appearanceView.setPadding(0,0,0,0)
+        }
+    }
+
+    private fun setupPressHighlight(mask: Drawable? = null) {
+        appearanceView.foreground = if (rippled) {
+            RippleDrawable(
+                ColorStateList.valueOf(theme.keyPressHighlightColor), null,
+                // ripple should be masked with an opaque color
+                mask ?: highlightMaskDrawable(Color.WHITE)
+            )
+        } else if (bordered && borderStroke) {
+            StateListDrawable().apply {
+                addState(
+                    intArrayOf(android.R.attr.state_pressed),
+                    borderedKeyBackgroundDrawable(
+                        Color.TRANSPARENT, theme.keyShadowColor,
+                        radius, dp(2), hMargin, vMargin
+                    )
+                )
+            }
+        } else {
+            StateListDrawable().apply {
+                addState(
+                    intArrayOf(android.R.attr.state_pressed),
+                    // use mask drawable as highlight directly
+                    mask ?: highlightMaskDrawable(theme.keyPressHighlightColor)
+                )
+            }
+        }
+    }
+
+    private fun highlightMaskDrawable(@ColorInt color: Int): Drawable {
+        return if (bordered) insetRadiusDrawable(hMargin, vMargin, radius, color)
+        else InsetDrawable(ColorDrawable(color), hMargin, vMargin, hMargin, vMargin)
+    }
+
+    override fun setEnabled(enabled: Boolean) {
+        super.setEnabled(enabled)
+        appearanceView.alpha = if (enabled) 1f else styledFloat(android.R.attr.disabledAlpha)
+    }
+
+    fun updateBounds() {
+        val (x, y) = cachedLocation.also { appearanceView.getLocationInWindow(it) }
+        cachedBounds.set(x, y, x + appearanceView.width, y + appearanceView.height)
+        boundsValid = true
+    }
+
+    override fun onLayout(changed: Boolean, left: Int, top: Int, right: Int, bottom: Int) {
+        boundsValid = false
+        if (layoutMarginLeft != 0f || layoutMarginRight != 0f) {
+            val w = right - left
+            val h = bottom - top
+            val layoutWidth = (w * (1f - layoutMarginLeft - layoutMarginRight)).roundToInt()
+            appearanceView.updateLayoutParams<LayoutParams> {
+                leftMargin = (w * layoutMarginLeft).roundToInt()
+                rightMargin = (w * layoutMarginRight).roundToInt()
+            }
+            // sets `measuredWidth` and `measuredHeight` of `AppearanceView`
+            // https://developer.android.com/guide/topics/ui/how-android-draws#measure
+            appearanceView.measure(
+                MeasureSpec.makeMeasureSpec(layoutWidth, MeasureSpec.EXACTLY),
+                MeasureSpec.makeMeasureSpec(h, MeasureSpec.EXACTLY)
+            )
+        }
+        super.onLayout(changed, left, top, right, bottom)
+    }
+
+    override fun onSizeChanged(w: Int, h: Int, oldw: Int, oldh: Int) {
+        if (bordered) return
+        when (def.viewId) {
+            R.id.button_space -> {
+                val bkgRadius = dp(3f)
+                val minHeight = dp(26)
+                val hInset = dp(10)
+                val vInset = if (h < minHeight) 0 else min((h - minHeight) / 2, dp(16))
+                appearanceView.background = insetRadiusDrawable(
+                    hInset, vInset, bkgRadius, theme.spaceBarColor
+                )
+                // InsetDrawable sets padding to container view; remove padding to prevent text from bing clipped
+                appearanceView.padding = 0
+                // apply press highlight for background area
+                setupPressHighlight(
+                    insetRadiusDrawable(
+                        hInset, vInset, bkgRadius,
+                        if (rippled) Color.WHITE else theme.keyPressHighlightColor
+                    )
+                )
+            }
+            R.id.button_return -> {
+                val drawableSize = min(min(w, h), dp(35))
+                val hInset = (w - drawableSize) / 2
+                val vInset = (h - drawableSize) / 2
+                appearanceView.background = insetOvalDrawable(
+                    hInset, vInset, theme.accentKeyBackgroundColor
+                )
+                appearanceView.padding = 0
+                setupPressHighlight(
+                    insetOvalDrawable(
+                        hInset, vInset, if (rippled) Color.WHITE else theme.keyPressHighlightColor
+                    )
+                )
+            }
+        }
+    }
+}
+
+@SuppressLint("ViewConstructor")
+internal open class ReferenceTextKeyView(ctx: Context, theme: Theme, def: KeyDef.Appearance.Text) :
+    ReferenceKeyView(ctx, theme, def) {
+    val mainText = view(::AutoScaleTextView) {
+        isClickable = false
+        isFocusable = false
+        background = null
+        text = def.displayText
+        setTextSize(TypedValue.COMPLEX_UNIT_DIP, def.textSize)
+        textDirection = View.TEXT_DIRECTION_FIRST_STRONG_LTR
+        // keep original typeface, apply textStyle only
+        setTypeface(typeface, def.textStyle)
+        ArtStyle.of(theme)?.let { typeface = Typeface.create(it.font, it.weight) }
+        setTextColor(
+            when (def.variant) {
+                Variant.Normal -> theme.keyTextColor
+                Variant.AltForeground, Variant.Alternative -> theme.altKeyTextColor
+                Variant.Accent -> theme.accentKeyTextColor
+            }
+        )
+    }
+
+    init {
+        appearanceView.apply {
+            add(mainText, lParams(wrapContent, wrapContent) {
+                centerInParent()
+            })
+        }
+    }
+}

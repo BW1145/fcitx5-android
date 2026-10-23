@@ -17,7 +17,7 @@ for version in baseline current; do
     "${CXX:-g++}" "${flags[@]}" -std=c++20 -O2 -Wall -Wextra -pedantic -Wno-missing-field-initializers \
       -I"$output/include" -I"$source" -DPREF_HEADER="\"$header\"" \
       "$root/scripts/benchmark_candidate_preferences.cpp" "$source/fcitx-utils/cutf8.cpp" -o "$output/$version"
-    "$output/$version" "$output/fixture-$version" | tee "$output/$version.txt"
+    CANDIDATE_SAMPLES_CSV="$output/$version-samples.csv" "$output/$version" "$output/fixture-$version" | tee "$output/$version.txt"
 done
 diff -u <(grep '^correctness ' "$output/baseline.txt") <(grep '^correctness ' "$output/current.txt")
 printf 'baseline=%s\ncurrent_worktree=%s\n' "$base" "$(git -C "$root" rev-parse HEAD)"
