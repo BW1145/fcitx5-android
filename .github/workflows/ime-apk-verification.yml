@@ -1,0 +1,90 @@
+name: Verify preserved IME diagnostic APKs
+on:
+  push:
+    branches: ['fix/ime-apk-verification-20261023']
+  workflow_dispatch:
+permissions:
+  contents: read
+  actions: read
+concurrency:
+  group: ime-apk-verification-${{ github.ref }}
+  cancel-in-progress: true
+env:
+  MAIN_APPLICATION_ID: org.fcitx.fcitx5.android.bw1145
+jobs:
+  preserved-apks:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333
+        with:
+          name: ime-diagnostic-apks-7c46e1b1ebb9015d446aa791a003a960f3738622
+          run-id: 39940492005
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/ime-apks
+      - name: Verify frozen APK identity before execution
+        run: |
+          cd "$RUNNER_TEMP/ime-apks"
+          sha256sum -c <<'HASHES'
+          434192c7a5b5b798de0c75810ebc6ef26ecc8f7952d01d3011284cb774f66ad5  baseline/app.apk
+          544bcbc0108b6512d51dc9d41d72436a2f79ea7ddf7950152ec99f01f78f3bf2  baseline/tests.apk
+          e76a731b6ea78c544eaf2030e2ce875b5c67d37a861528f26481215cb1c27fa1  candidate/app.apk
+          a59915828187fd537e7129599b581dac2bf5afba94c80f9c3e22be0a12610d8e  candidate/tests.apk
+          HASHES
+          python3 -c 'import json; d=json.load(open("provenance.json")); assert d["run_id"]=="39940492005" and d["candidate_sha"]=="7c46e1b1ebb9015d446aa791a003a960f3738622"'
+      - name: Verify KVM before running preserved APKs
+        run: |
+          set -euo pipefail
+          mkdir -p build/ime-diagnostics
+          {
+            date -u +%FT%TZ
+            id
+            groups
+            ls -l /dev/kvm || true
+            stat /dev/kvm || true
+            echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+            sudo udevadm control --reload-rules
+            sudo udevadm trigger --name-match=kvm
+            sudo udevadm settle --timeout=30
+            ready=0
+            for attempt in $(seq 1 15); do
+              if test -c /dev/kvm && test -r /dev/kvm && test -w /dev/kvm; then
+                ready=1
+                echo "KVM character device readable/writable on attempt $attempt"
+                break
+              fi
+              echo "KVM not accessible on attempt $attempt"
+              ls -l /dev/kvm || true
+              sleep 1
+            done
+            stat /dev/kvm || true
+            test "$ready" -eq 1
+          } 2>&1 | tee build/ime-diagnostics/kvm-preflight.txt
+      - name: Independent functional suites on identical existing APKs
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          disable-linux-hw-accel: false
+          script: IME_SKIP_ABBA=1 bash scripts/run_ime_diagnostics.sh "$RUNNER_TEMP/ime-apks"
+      - name: Preserve APK source and harness identity separately
+        if: always()
+        run: |
+          mkdir -p build/ime-diagnostics
+          cp "$RUNNER_TEMP/ime-apks/provenance.json" build/ime-diagnostics/apk-provenance.json
+          git rev-parse HEAD > build/ime-diagnostics/runner-commit.txt
+          find "$RUNNER_TEMP/ime-apks" -name '*.apk' -exec sha256sum {} \; > build/ime-diagnostics/apk-sha256.txt
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: ime-preserved-apk-verification-${{ github.sha }}
+          path: build/ime-diagnostics/
+          if-no-files-found: error
