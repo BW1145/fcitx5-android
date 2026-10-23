@@ -7,6 +7,7 @@ package org.fcitx.fcitx5.android.input.candidates.expanded
 import androidx.paging.PagingSource
 import androidx.paging.PagingState
 import org.fcitx.fcitx5.android.core.CandidateWord
+import org.fcitx.fcitx5.android.core.nextCandidateOffset
 import org.fcitx.fcitx5.android.daemon.FcitxConnection
 import timber.log.Timber
 
@@ -22,11 +23,7 @@ class CandidatesPagingSource(val fcitx: FcitxConnection, val total: Int, val off
             getCandidates(startIndex, pageSize)
         }
         val prevKey = if (startIndex >= pageSize) startIndex - pageSize else null
-        val nextKey = if (total > 0) {
-            if (startIndex + pageSize + 1 >= total) null else startIndex + pageSize
-        } else {
-            if (candidates.size < pageSize) null else startIndex + pageSize
-        }
+        val nextKey = nextCandidateOffset(startIndex, candidates.size, pageSize, total)
         return LoadResult.Page(candidates.toList(), prevKey, nextKey)
     }
 

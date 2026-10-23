@@ -12,7 +12,7 @@
 
 #include "../helper-types.h"
 
-typedef std::function<void(const std::vector<CandidateEntity> &, const int)> CandidateListCallback;
+typedef std::function<void(const std::vector<CandidateEntity> &, const int, const CandidateScanState &)> CandidateListCallback;
 typedef std::function<void(const std::string &, const int, int64_t)> CommitStringCallback;
 typedef std::function<void(const fcitx::Text &, int64_t)> ClientPreeditCallback;
 typedef std::function<void(const fcitx::Text &, const fcitx::Text &, const fcitx::Text &, const std::vector<CandidateActionEntity> &)> InputPanelCallback;
@@ -116,5 +116,9 @@ FCITX_ADDON_DECLARE_FUNCTION(AndroidFrontend, setPagedCandidateCallback,
 
 FCITX_ADDON_DECLARE_FUNCTION(AndroidFrontend, setSwitchInputMethodCallback,
                              void(const SwitchInputMethodCallback &))
+
+
+FCITX_ADDON_DECLARE_FUNCTION(AndroidFrontend, getCandidateBatch, CandidateBatchEntity(int, int, int64_t, int64_t))
+FCITX_ADDON_DECLARE_FUNCTION(AndroidFrontend, getCandidateScanState, CandidateScanState())
 
 #endif // FCITX5_ANDROID_ANDROIDFRONTEND_PUBLIC_H

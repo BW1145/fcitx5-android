@@ -6,6 +6,7 @@
 #include <map>
 #include <vector>
 #include <unordered_map>
+#include <memory>
 #include <sstream>
 #include <cctype>
 #include <cerrno>
@@ -31,6 +32,11 @@ inline std::string preferenceContext(const std::string &s) {
 class CandidatePreferences {
 public:
     using Rules = std::map<std::string,int>;
+    using ScopeRules = std::unordered_map<std::string,int>;
+    struct Snapshot {
+        uint64_t revision;
+        std::shared_ptr<const ScopeRules> rules;
+    };
     static Rules read(const std::filesystem::path &path) {
         Rules rules;
         std::ifstream input(path);std::string line;
@@ -68,21 +74,28 @@ public:
         auto &value=cache();
         if(!force && value.loaded && value.version==version) return false;
         auto rules=read(path_);
-        value.replaceRules(std::move(rules));value.version=version;value.loaded=true;
+        if (!value.loaded || value.rules!=rules) value.replaceRules(std::move(rules));
+        value.version=version;value.loaded=true;
         return true;
     }
     bool empty() const { return cache().rules.empty(); }
+    uint64_t revision() const { return cache().revision; }
+    Snapshot snapshot(const std::string &scope) const {
+        const auto &value=cache();
+        const auto found=value.scopes.find(scope);
+        return {value.revision,found==value.scopes.end()?nullptr:found->second};
+    }
     int mode(const std::string &scope,const std::string &word) const {
         const auto &scopes=cache().scopes;
         const auto found=scopes.find(scope);
         if (found==scopes.end()) return 0;
-        const auto entry=found->second.find(word);
-        return entry==found->second.end()?0:entry->second;
+        const auto entry=found->second->find(word);
+        return entry==found->second->end()?0:entry->second;
     }
     bool hasWord(const std::string &scope,const std::string &word) const {
         const auto &scopes=cache().scopes;
         const auto found=scopes.find(scope);
-        return found!=scopes.end() && found->second.find(word)!=found->second.end();
+        return found!=scopes.end() && found->second->find(word)!=found->second->end();
     }
     bool hasScope(const std::string &scope) const {
         const auto prefix=scope+"\t";
@@ -159,9 +172,10 @@ private:
         bool loaded=false;
         Stamp version;
         Rules rules;
-        std::unordered_map<std::string,std::unordered_map<std::string,int>> scopes;
+        uint64_t revision=0;
+        std::unordered_map<std::string,std::shared_ptr<const ScopeRules>> scopes;
         void replaceRules(Rules replacement) {
-            decltype(scopes) index;
+            std::unordered_map<std::string,ScopeRules> index;
             // read() normalizes valid rows, and set() hex-encodes words. Build
             // the decoded lookup only at a file load/save boundary, never on
             // the first key querying a potentially very large scope.
@@ -179,8 +193,13 @@ private:
                 }
                 index[key.substr(0,split)].emplace(std::move(text),mode);
             }
+            decltype(scopes) snapshots;
+            for (auto &[scope,words]:index)
+                snapshots.emplace(scope,std::make_shared<const ScopeRules>(std::move(words)));
             rules=std::move(replacement);
-            scopes=std::move(index);
+            scopes=std::move(snapshots);
+            static uint64_t nextRevision=0;
+            revision=++nextRevision;
         }
     };
     std::filesystem::path path_;

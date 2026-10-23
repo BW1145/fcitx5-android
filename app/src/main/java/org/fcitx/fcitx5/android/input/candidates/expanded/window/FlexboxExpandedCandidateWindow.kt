@@ -66,7 +66,7 @@ class FlexboxExpandedCandidateWindow :
                         this@FlexboxExpandedCandidateWindow.layoutManager.apply {
                             pageUpBtn.isEnabled = findFirstCompletelyVisibleItemPosition() > 0
                             pageDnBtn.isEnabled =
-                                findLastCompletelyVisibleItemPosition() < itemCount - 1
+                                budgetHasMore || findLastCompletelyVisibleItemPosition() < itemCount - 1
                         }
                     }
                 })

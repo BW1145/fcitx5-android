@@ -23,7 +23,7 @@ public:
 
     Instance *instance() { return instance_; }
 
-    void updateCandidateList(const std::vector<CandidateEntity> &candidates, int total);
+    void updateCandidateList(const std::vector<CandidateEntity> &candidates, int total, const CandidateScanState &state);
     void commitString(const std::string &str, int cursor, int64_t target);
     void updateClientPreedit(const Text &clientPreedit, int64_t target);
     void updateInputPanel(const Text &preedit, const Text &auxUp, const Text &auxDown, const std::vector<CandidateActionEntity> &tabs);
@@ -45,6 +45,8 @@ public:
     [[nodiscard]] InputContext *activeInputContext() const;
     void setCapabilityFlags(uint64_t flag);
     std::vector<CandidateEntity> getCandidates(int offset, int limit);
+    CandidateBatchEntity getCandidateBatch(int offset, int limit, int64_t revision, int64_t ruleRevision);
+    CandidateScanState getCandidateScanState();
     std::vector<CandidateActionEntity> getCandidateActions(int idx);
     void triggerCandidateAction(int idx, int actionIdx);
     void triggerTabAction(int idx);
@@ -81,6 +83,8 @@ private:
     FCITX_ADDON_EXPORT_FUNCTION(AndroidFrontend, deactivateInputContext);
     FCITX_ADDON_EXPORT_FUNCTION(AndroidFrontend, setCapabilityFlags);
     FCITX_ADDON_EXPORT_FUNCTION(AndroidFrontend, getCandidates);
+    FCITX_ADDON_EXPORT_FUNCTION(AndroidFrontend, getCandidateBatch);
+    FCITX_ADDON_EXPORT_FUNCTION(AndroidFrontend, getCandidateScanState);
     FCITX_ADDON_EXPORT_FUNCTION(AndroidFrontend, getCandidateActions);
     FCITX_ADDON_EXPORT_FUNCTION(AndroidFrontend, triggerCandidateAction);
     FCITX_ADDON_EXPORT_FUNCTION(AndroidFrontend, triggerTabAction);
@@ -108,7 +112,7 @@ private:
     std::vector<std::unique_ptr<HandlerTableEntry<EventHandler>>> eventHandlers_;
     int pagingMode_;
 
-    CandidateListCallback candidateListCallback = [](const std::vector<CandidateEntity> &, const int) {};
+    CandidateListCallback candidateListCallback = [](const std::vector<CandidateEntity> &, const int, const CandidateScanState &) {};
     CommitStringCallback commitStringCallback = [](const std::string &, const int, int64_t) {};
     ClientPreeditCallback preeditCallback = [](const Text &, int64_t) {};
     InputPanelCallback inputPanelCallback = [](const fcitx::Text &, const fcitx::Text &, const Text &, const std::vector<CandidateActionEntity> &) {};

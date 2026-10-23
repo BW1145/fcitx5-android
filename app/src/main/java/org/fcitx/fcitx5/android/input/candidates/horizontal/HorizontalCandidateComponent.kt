@@ -4,6 +4,7 @@
 package org.fcitx.fcitx5.android.input.candidates.horizontal
 
 import android.content.res.Configuration
+import android.widget.ProgressBar
 import android.graphics.drawable.ShapeDrawable
 import android.graphics.drawable.shapes.RectShape
 import androidx.lifecycle.lifecycleScope
@@ -15,7 +16,10 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
 import org.fcitx.fcitx5.android.R
+import org.fcitx.fcitx5.android.core.candidateLoading
 import org.fcitx.fcitx5.android.core.FcitxEvent
+import org.fcitx.fcitx5.android.core.awaitCandidateProgress
+import org.fcitx.fcitx5.android.core.CandidateScanState
 import org.fcitx.fcitx5.android.data.prefs.AppPrefs
 import org.fcitx.fcitx5.android.input.bar.ExpandButtonStateMachine.BooleanKey.ExpandedCandidatesEmpty
 import org.fcitx.fcitx5.android.input.bar.ExpandButtonStateMachine.TransitionEvent.ExpandedCandidatesUpdated
@@ -50,8 +54,12 @@ class HorizontalCandidateComponent :
     }
     private var minWidth = 0
     private var loadJob: Job? = null
+    private var loadingIndicatorJob: Job? = null
     private var generation = 0
     private var more = false
+    var scanState: CandidateScanState? = null
+        private set
+    val hasMore get() = more
     private val offset = MutableSharedFlow<Int>(replay = 1, onBufferOverflow = BufferOverflow.DROP_OLDEST)
     val expandedCandidateOffset = offset.asSharedFlow()
 
@@ -79,7 +87,7 @@ class HorizontalCandidateComponent :
                 if (findFirstVisibleItemPosition() <= 0) offset.tryEmit(end.coerceAtLeast(0))
                 bar.expandButtonStateMachine.push(
                     ExpandedCandidatesUpdated,
-                    ExpandedCandidatesEmpty to (adapter.candidates.isEmpty() || (!more && end >= adapter.itemCount))
+                    ExpandedCandidatesEmpty to (!more && end >= adapter.itemCount)
                 )
             }
         }
@@ -89,6 +97,18 @@ class HorizontalCandidateComponent :
         RecyclerView(context).apply {
             id = R.id.candidate_view
             itemAnimator = null
+            val indicator = ProgressBar(context).apply {
+                contentDescription = context.getString(R.string.loading)
+            }
+            loadingIndicatorJob = service.lifecycleScope.launch {
+                candidateLoading.collect { loading ->
+                    if (loading) {
+                        val size = context.dp(24)
+                        indicator.layout((width - size) / 2, 0, (width + size) / 2, size)
+                        overlay.add(indicator)
+                    } else overlay.remove(indicator)
+                }
+            }
             adapter = this@HorizontalCandidateComponent.adapter
             layoutManager = this@HorizontalCandidateComponent.layoutManager
             val divider = ShapeDrawable(RectShape()).apply {
@@ -110,11 +130,24 @@ class HorizontalCandidateComponent :
         val requestedGeneration = generation
         val start = adapter.itemCount
         loadJob = service.lifecycleScope.launch {
-            val words = fcitx.runOnReady { getCandidates(start, 16) }
-            if (requestedGeneration != generation) return@launch
-            more = words.size == 16 && (adapter.total < 0 || start + words.size < adapter.total)
-            adapter.appendCandidates(words)
+            val expected = scanState
+            val batch = if (expected != null) awaitCandidateProgress(expected) {
+                fcitx.runOnReady { getCandidateBatch(start, 16, expected.revision, expected.ruleRevision) }
+            } else fcitx.runOnReady { getCandidateBatch(start, 16) }
+            if (requestedGeneration != generation || batch.state.stale ||
+                (expected != null && !expected.sameGeneration(batch.state))) return@launch
+            scanState = batch.state
+            more = batch.state.hasMoreAfter(start + batch.candidates.size)
+            adapter.appendCandidates(batch.candidates)
         }
+    }
+
+    fun updateScanState(state: CandidateScanState) {
+        if (scanState?.sameGeneration(state) != true) return
+        scanState = state
+        more = state.hasMoreAfter(adapter.itemCount)
+        bar.expandButtonStateMachine.push(ExpandedCandidatesUpdated,
+            ExpandedCandidatesEmpty to (!more && adapter.itemCount == 0))
     }
 
     override fun onCandidateUpdate(data: FcitxEvent.CandidateListEvent.Data) {
@@ -127,16 +160,19 @@ class HorizontalCandidateComponent :
             HorizontalCandidateMode.NeverFillWidth -> 0
             else -> view.width / minOf(spans, count.coerceAtLeast(1))
         }
-        more = count > 0 && (data.total < 0 || count < data.total)
+        scanState = data.scanState
+        more = data.scanState?.let { it.hasMoreAfter(count) }
+            ?: (count > 0 && (data.total < 0 || count < data.total))
         adapter.updateCandidates(data.candidates, data.total)
         view.scrollToPosition(0)
         if (count == 0) {
             offset.tryEmit(0)
-            bar.expandButtonStateMachine.push(ExpandedCandidatesUpdated, ExpandedCandidatesEmpty to true)
+            bar.expandButtonStateMachine.push(ExpandedCandidatesUpdated, ExpandedCandidatesEmpty to !more)
         }
     }
 
     fun close() {
+        loadingIndicatorJob?.cancel()
         generation++
         loadJob?.cancel()
         loadJob = null

@@ -12,6 +12,7 @@ import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import org.fcitx.fcitx5.android.FcitxApplication
 import org.fcitx.fcitx5.android.R
@@ -46,6 +47,7 @@ class Fcitx(private val context: Context) : FcitxAPI, FcitxLifecycleOwner {
     override suspend fun setInputTarget(target: Long) = withFcitxContext {
         setAndroidInputTarget(target)
         nativeInputTarget = target
+        publishedScanState = null
         publishedCandidateRevision = -1L
     }
     override val candidateRevisionCached get() = publishedCandidateRevision
@@ -106,14 +108,14 @@ class Fcitx(private val context: Context) : FcitxAPI, FcitxLifecycleOwner {
         code: Int,
         up: Boolean,
         timestamp: Int
-    ) =
-        withFcitxContext { sendKeyToFcitxString(key, states.toInt(), code, up, timestamp) }
+    ) {
+        val sym = if (key == "space") 32 else key.singleOrNull()?.code ?: -1
+        sendAfterSelection(sym, states, up) { sendKeyToFcitxString(key, states.toInt(), code, up, timestamp) }
+    }
 
-    override suspend fun sendKey(c: Char, states: UInt, code: Int, up: Boolean, timestamp: Int) =
-        withFcitxContext { sendKeyToFcitxChar(c, states.toInt(), code, up, timestamp) }
+    override suspend fun sendKey(c: Char, states: UInt, code: Int, up: Boolean, timestamp: Int) { sendAfterSelection(c.code, states, up) { sendKeyToFcitxChar(c, states.toInt(), code, up, timestamp) } }
 
-    override suspend fun sendKey(sym: Int, states: UInt, code: Int, up: Boolean, timestamp: Int) =
-        withFcitxContext { sendKeySymToFcitx(sym, states.toInt(), code, up, timestamp) }
+    override suspend fun sendKey(sym: Int, states: UInt, code: Int, up: Boolean, timestamp: Int) { sendAfterSelection(sym, states, up) { sendKeySymToFcitx(sym, states.toInt(), code, up, timestamp) } }
 
     override suspend fun sendKey(
         sym: KeySym,
@@ -121,8 +123,7 @@ class Fcitx(private val context: Context) : FcitxAPI, FcitxLifecycleOwner {
         code: Int,
         up: Boolean,
         timestamp: Int
-    ) =
-        withFcitxContext { sendKeySymToFcitx(sym.sym, states.toInt(), code, up, timestamp) }
+    ) { sendAfterSelection(sym.sym, states.toInt().toUInt(), up) { sendKeySymToFcitx(sym.sym, states.toInt(), code, up, timestamp) } }
 
     override suspend fun select(idx: Int): Boolean = withFcitxContext { selectCandidate(idx) }
     override suspend fun select(idx: Int, candidate: CandidateWord): Boolean = withFcitxContext {
@@ -223,8 +224,67 @@ class Fcitx(private val context: Context) : FcitxAPI, FcitxLifecycleOwner {
     override suspend fun activateAction(id: Int) =
         withFcitxContext { activateUserInterfaceAction(id) }
 
-    override suspend fun getCandidates(offset: Int, limit: Int): Array<CandidateWord> =
-        withFcitxContext { getFcitxCandidates(offset, limit) ?: emptyArray() }
+    override suspend fun getCandidateScanState() = withFcitxContext {
+        CandidateScanState.decode(getFcitxCandidateScanState())
+    }
+
+    override suspend fun getCandidateBatch(offset: Int, limit: Int, expectedRevision: Long,
+        expectedRuleRevision: Long): CandidateBatch = withFcitxContext {
+        require(offset >= 0 && limit > 0 && offset <= Int.MAX_VALUE - limit) {
+            "Invalid candidate range"
+        }
+        val raw = getFcitxCandidateBatch(offset, limit, expectedRevision, expectedRuleRevision)
+        @Suppress("UNCHECKED_CAST")
+        CandidateBatch(raw[0] as Array<CandidateWord>, CandidateScanState.decode(raw[1] as LongArray))
+    }
+
+    // Compatibility callers explicitly request a full range; UI uses single bounded batches.
+    override suspend fun getCandidates(offset: Int, limit: Int): Array<CandidateWord> {
+        if (offset < 0 || limit <= 0 || offset > Int.MAX_VALUE - limit) return emptyArray()
+        val initial = getCandidateScanState()
+        val result = ArrayList<CandidateWord>()
+        do {
+            val batch = getCandidateBatch(offset + result.size, limit - result.size,
+                initial.revision, initial.ruleRevision)
+            if (!initial.sameGeneration(batch.state)) return emptyArray()
+            result.addAll(batch.candidates)
+            if (result.size >= limit || batch.state.exhausted || !batch.state.budgeted) break
+            delay(1) // Yield the engine thread; never spin through hidden candidates in one JNI call.
+        } while (true)
+        return result.toTypedArray()
+    }
+
+    private suspend fun sendAfterSelection(sym: Int, states: UInt, up: Boolean, send: () -> Unit) {
+        val index = candidateSelectionIndex(sym, (states and KeyState.SimpleMask.state) != 0u, up)
+        if (index == null) {
+            withFcitxContext { if (inputTargetIsCurrent()) send() }
+            return
+        }
+        try {
+            sendPendingCandidateSelection(
+                readState = { getCandidateScanState() },
+                awaitReady = { initial ->
+                    candidateLoading.value = initial.available <= index && initial.pending
+                    awaitCandidateSelection(initial, index) {
+                        getCandidateBatch(0, index + 1, initial.revision, initial.ruleRevision)
+                    }
+                },
+                trySend = { expected ->
+                    withFcitxContext {
+                        if (!inputTargetIsCurrent()) false
+                        else {
+                            val current = CandidateScanState.decode(getFcitxCandidateScanState())
+                            // Check and send atomically. A same-target rule edit retries, not drops, the key.
+                            if (!expected.sameGeneration(current)) false
+                            else { send(); true }
+                        }
+                    }
+                }
+            )
+        } finally {
+            candidateLoading.value = false
+        }
+    }
 
     override suspend fun getCandidateActions(idx: Int): Array<CandidateAction> =
         withFcitxContext { getFcitxCandidateActions(idx) ?: emptyArray() }
@@ -262,6 +322,7 @@ class Fcitx(private val context: Context) : FcitxAPI, FcitxLifecycleOwner {
     private companion object JNI {
         private var nativeInputTarget = 0L
         @Volatile private var publishedCandidateRevision = -1L
+        @Volatile private var publishedScanState: CandidateScanState? = null
 
         /**
          * called from native-lib
@@ -428,6 +489,11 @@ class Fcitx(private val context: Context) : FcitxAPI, FcitxLifecycleOwner {
         external fun activateUserInterfaceAction(id: Int)
 
         @JvmStatic
+        external fun getFcitxCandidateBatch(offset: Int, limit: Int, expectedRevision: Long,
+            expectedRuleRevision: Long): Array<Any>
+        @JvmStatic
+        external fun getFcitxCandidateScanState(): LongArray
+        @JvmStatic
         external fun getFcitxCandidates(offset: Int, limit: Int): Array<CandidateWord>?
 
         @JvmStatic
@@ -474,7 +540,10 @@ class Fcitx(private val context: Context) : FcitxAPI, FcitxLifecycleOwner {
 
         private fun publishEvent(event: FcitxEvent<*>) {
             when (event) {
-                is FcitxEvent.CandidateListEvent -> publishedCandidateRevision = event.data.candidates.firstOrNull()?.revision ?: -1L
+                is FcitxEvent.CandidateListEvent -> {
+                    publishedScanState = event.data.scanState
+                    publishedCandidateRevision = event.data.scanState?.revision ?: event.data.candidates.firstOrNull()?.revision ?: -1L
+                }
                 is FcitxEvent.PagedCandidateEvent -> publishedCandidateRevision = event.data.candidates.firstOrNull()?.revision ?: -1L
                 else -> Unit
             }

@@ -427,6 +427,13 @@ public:
         return p_frontend->call<fcitx::IAndroidFrontend::getCandidates>(offset, limit);
     }
 
+    CandidateBatchEntity getCandidateBatch(int offset, int limit, int64_t revision, int64_t ruleRevision) {
+        return p_frontend->call<fcitx::IAndroidFrontend::getCandidateBatch>(offset,limit,revision,ruleRevision);
+    }
+    CandidateScanState getCandidateScanState() {
+        return p_frontend->call<fcitx::IAndroidFrontend::getCandidateScanState>();
+    }
+
     std::vector<CandidateActionEntity> getCandidateActions(int idx) {
         auto actions = std::vector<CandidateActionEntity>();
         for (const auto &a: p_frontend->call<fcitx::IAndroidFrontend::getCandidateActions>(idx)) {
@@ -613,17 +620,22 @@ Java_org_fcitx_fcitx5_android_core_Fcitx_startupFcitx(
         fcitx::registerDomain(CString(env, domain), locale_dir_char);
     }
 
-    auto candidateListCallback = [](const std::vector<CandidateEntity> &candidates, const int total) {
+    auto candidateListCallback = [](const std::vector<CandidateEntity> &candidates, const int total, const CandidateScanState &state) {
         auto env = GlobalRef->AttachEnv();
         auto candidatesArray = JRef<jobjectArray>(env, env->NewObjectArray(static_cast<int>(candidates.size()), GlobalRef->Candidate, nullptr));
         int i = 0;
         for (const auto &candidate: candidates) {
             env->SetObjectArrayElement(candidatesArray, i++, candidateEntityToObject(env, candidate));
         }
-        auto vararg = JRef<jobjectArray>(env, env->NewObjectArray(2, GlobalRef->Object, nullptr));
+        auto vararg = JRef<jobjectArray>(env, env->NewObjectArray(3, GlobalRef->Object, nullptr));
         auto candidatesCount = JRef(env, env->NewObject(GlobalRef->Integer, GlobalRef->IntegerInit, total));
         env->SetObjectArrayElement(vararg, 0, *candidatesCount);
         env->SetObjectArrayElement(vararg, 1, *candidatesArray);
+        auto scanState = JRef<jlongArray>(env, env->NewLongArray(7));
+        jlong values[7];
+        std::copy(state.begin(), state.end(), values);
+        env->SetLongArrayRegion(scanState, 0, 7, values);
+        env->SetObjectArrayElement(vararg, 2, *scanState);
         env->CallStaticVoidMethod(GlobalRef->Fcitx, GlobalRef->HandleFcitxEvent, 0, *vararg);
     };
     auto commitStringCallback = [](const std::string &str, const int cursor, int64_t target) {
@@ -1112,6 +1124,38 @@ Java_org_fcitx_fcitx5_android_core_Fcitx_getFcitxCandidates(JNIEnv *env, jclass 
         env->SetObjectArrayElement(array, i, obj);
     }
     return array;
+}
+
+static jlongArray candidateScanStateToArray(JNIEnv *env, const CandidateScanState &state) {
+    auto array=env->NewLongArray(7);
+    jlong values[7];
+    std::copy(state.begin(),state.end(),values);
+    env->SetLongArrayRegion(array,0,7,values);
+    return array;
+}
+
+extern "C"
+JNIEXPORT jlongArray JNICALL
+Java_org_fcitx_fcitx5_android_core_Fcitx_getFcitxCandidateScanState(JNIEnv *env, jclass) {
+    RETURN_VALUE_IF_NOT_RUNNING(nullptr)
+    return candidateScanStateToArray(env,Fcitx::Instance().getCandidateScanState());
+}
+
+extern "C"
+JNIEXPORT jobjectArray JNICALL
+Java_org_fcitx_fcitx5_android_core_Fcitx_getFcitxCandidateBatch(JNIEnv *env, jclass, jint offset, jint limit, jlong revision, jlong ruleRevision) {
+    RETURN_VALUE_IF_NOT_RUNNING(nullptr)
+    auto batch=Fcitx::Instance().getCandidateBatch(offset,limit,revision,ruleRevision);
+    auto candidates=JRef<jobjectArray>(env,env->NewObjectArray(batch.candidates.size(),GlobalRef->Candidate,nullptr));
+    for (size_t i=0;i<batch.candidates.size();++i) {
+        auto value=JRef(env,candidateEntityToObject(env,batch.candidates[i]));
+        env->SetObjectArrayElement(candidates,i,value);
+    }
+    auto state=JRef<jlongArray>(env,candidateScanStateToArray(env,batch.state));
+    auto result=env->NewObjectArray(2,GlobalRef->Object,nullptr);
+    env->SetObjectArrayElement(result,0,*candidates);
+    env->SetObjectArrayElement(result,1,*state);
+    return result;
 }
 
 extern "C"

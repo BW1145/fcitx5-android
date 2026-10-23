@@ -48,6 +48,14 @@ for revision in baseline candidate; do
         exit 1
     fi
 done
+# Candidate-only real Rime batch contract. Keep partial evidence if assertions fail.
+adb install -r -d "$apk_root/candidate/app.apk"
+adb install -r -d -t "$apk_root/candidate/tests.apk"
+adb shell pm clear "$package" | grep -q Success
+budget_status=0
+run_test org.fcitx.fcitx5.android.PersonalCandidateBudgetTest 1 "$output/candidate-budget-instrumentation.txt" || budget_status=$?
+adb exec-out run-as "$package" cat files/candidate-budget.json > "$output/candidate-budget.json" || true
+if ((budget_status != 0)); then exit "$budget_status"; fi
 # Functional/UI and deterministic Binder speech tests run against the candidate.
 adb install -r -d "$apk_root/candidate/app.apk"
 adb install -r -d -t "$apk_root/candidate/tests.apk"

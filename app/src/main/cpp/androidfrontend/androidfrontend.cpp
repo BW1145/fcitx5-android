@@ -17,6 +17,8 @@
 
 #include "androidfrontend.h"
 #include "candidatepreferences.h"
+#include "candidatescan.h"
+#include <limits>
 #include "preferredcandidate.h"
 #include "../personal-anthy-public.h"
 #include "../personal-rime-public.h"
@@ -107,7 +109,7 @@ public:
         beginPreferences(false);
         if (prefer_) {
             auto candidates = preferenceCandidates(0,16);
-            frontend_->updateCandidateList(candidates, ended_ ? static_cast<int>(order_.size()) : -1);
+            frontend_->updateCandidateList(candidates, scan_.exhausted ? static_cast<int>(scan_.order.size()) : -1, scanState());
             return;
         }
         std::vector<CandidateEntity> candidates;
@@ -137,7 +139,9 @@ public:
                 }
             }
         }
-        frontend_->updateCandidateList(candidates, total);
+        frontend_->updateCandidateList(candidates, total, {candidateRevision_,
+            static_cast<int64_t>(candidateRulesRevision_), static_cast<int64_t>(candidates.size()),
+            static_cast<int64_t>(candidates.size()), total>=0 && static_cast<int>(candidates.size())>=total ? 1 : 0, 0, 0});
     }
 
     void updateCandidatesPaged() {
@@ -158,8 +162,8 @@ public:
         }
         if (prefer_) {
             auto candidates=preferenceCandidates(0,list->size());
-            auto cursor = std::find(order_.begin(), order_.end(), cursorIndex);
-            int displayCursor = cursor == order_.end() ? -1 : static_cast<int>(cursor - order_.begin());
+            auto cursor = std::find(scan_.order.begin(), scan_.order.end(), cursorIndex);
+            int displayCursor = cursor == scan_.order.end() ? -1 : static_cast<int>(cursor - scan_.order.begin());
             frontend_->updatePagedCandidate(PagedCandidateEntity(candidates,displayCursor,
                 layoutHint,hasPrev,hasNext));
             return;
@@ -237,6 +241,34 @@ public:
             }
         }
         return candidates;
+    }
+
+    CandidateScanState getCandidateScanState() {
+        preferences_.load();
+        if (ensureCandidateRevision()) beginPreferences(paged_);
+        return scanState();
+    }
+    CandidateScanState scanState() const {
+        return {candidateRevision_, static_cast<int64_t>(candidateRulesRevision_),
+                scan_.cursor, static_cast<int64_t>(scan_.order.size()),
+                scan_.exhausted ? 1 : 0, budgeted_ ? 1 : 0, 0};
+    }
+    CandidateBatchEntity getCandidateBatch(int offset, int limit, int64_t revision, int64_t ruleRevision) {
+        auto state=getCandidateScanState();
+        if ((revision>=0 && revision!=state[0]) || (ruleRevision>=0 && ruleRevision!=state[1])) {
+            state[6]=1;return {{},state};
+        }
+        if (offset<0 || limit<=0 || offset>std::numeric_limits<int>::max()-limit) return {{},state};
+        auto candidates=getCandidates(offset,limit);
+        state=scanState();
+        if (!prefer_) {
+            const auto &list=inputPanel().candidateList();
+            const auto *bulk=list ? list->toBulk() : nullptr;
+            int total=bulk ? bulk->totalSize() : (list ? list->size() : 0);
+            state[3]=offset+static_cast<int64_t>(candidates.size());
+            state[4]=(total>=0 ? state[3]>=total : static_cast<int>(candidates.size())<limit);
+        }
+        return {std::move(candidates),state};
     }
 
     bool candidateMatches(int idx, const std::string &text, int64_t revision) {
@@ -399,8 +431,9 @@ private:
         auto context = std::make_tuple(inputTarget_, entry ? entry->uniqueName() : "",
             inputPanel().preedit().toString(), inputPanel().clientPreedit().toString());
         const auto &list = inputPanel().candidateList();
-        if (force || candidateListSnapshot_.lock() != list || candidateContext_ != context) {
+        if (force || candidateRulesRevision_ != preferences_.revision() || candidateListSnapshot_.lock() != list || candidateContext_ != context) {
             candidateRevision_ = ++nextRevision;
+            candidateRulesRevision_ = preferences_.revision();
             candidateListSnapshot_ = list;
             candidateContext_ = std::move(context);
             return true;
@@ -416,9 +449,9 @@ private:
     std::string scope_;
     std::string legacyScope_;
     std::string lastCommitted_;
-    bool prefer_=false, paged_=false, ended_=false, scopeReady_=false;
-    int scanned_=0;
-    std::vector<int> order_, lowered_;
+    bool prefer_=false, paged_=false, scopeReady_=false, budgeted_=false;
+    CandidateScan scan_;
+    uint64_t candidateRulesRevision_=0;
 
     bool isAnthy() {
         const auto *entry=frontend_->instance()->inputMethodEntry(this);
@@ -453,16 +486,16 @@ private:
             fillOrder(currentList->size());
             return page!=startPage;
         };
-        const int index=preferredCandidateIndex(order_,current,advance,movePage);
+        const int index=preferredCandidateIndex(scan_.order,current,advance,movePage);
         if (index<0) return true; // No visible choice: do not preview a hidden word.
         return frontend_->instance()->addonManager().addon("anthy")
             ->call<IAnthyEngine::personalSelectPreview>(this,rawCandidate(index).text().toString());
     }
 
     void beginPreferences(bool paged) {
+        preferences_.load();
         ensureCandidateRevision(true);
-        preferences_.load();paged_=paged;ended_=false;scanned_=0;
-        order_.clear();lowered_.clear();
+        paged_=paged;scan_.reset();budgeted_=false;
         scopeReady_=false;
         prefer_=false;
         // Without custom rules, do not query the engine's context
@@ -471,6 +504,9 @@ private:
         if (preferences_.empty()) return;
         ensurePreferenceScope();
         prefer_=preferences_.hasScope(scope_) || (!legacyScope_.empty() && preferences_.hasScope(legacyScope_));
+        auto entry=frontend_->instance()->inputMethodEntry(this);
+        budgeted_=prefer_ && !paged_ && entry && entry->uniqueName()=="rime";
+        candidateRulesRevision_=preferences_.revision();
     }
     void ensurePreferenceScope() {
         if (scopeReady_) return;
@@ -499,56 +535,41 @@ private:
     }
     void fillOrder(int count) {
         const auto &list=inputPanel().candidateList();
-        if(!list) { ended_=true;return; }
+        if(!list) { scan_.exhausted=true;return; }
         auto bulk=paged_ ? nullptr : list->toBulk();
         int total=bulk ? bulk->totalSize() : list->size();
         std::vector<std::string> legacyWords;
-        while(!ended_ && static_cast<int>(order_.size())<count) {
-            if(total>=0 && scanned_>=total) ended_=true;
-            else {
-                try {
-                    int index=scanned_++;
-                    const auto &word=rawCandidate(index);
-                    const auto text=filterString(word.text());
-                    // Old Anthy rows did not save readings. Claim a legacy choice
-                    // only when that word actually appears for this reading.
-                    int mode=preferences_.mode(scope_,text);
-                    if(!legacyScope_.empty()) {
-                        const int legacyMode=preferences_.mode(legacyScope_,text);
-                        if (legacyMode || preferences_.hasWord(legacyScope_,text)) {
-                            legacyWords.push_back(text);
-                            // A same-scope migration historically removes the
-                            // row; otherwise an existing scoped choice wins.
-                            if (legacyScope_==scope_) mode=0;
-                            else if (!mode && !preferences_.hasWord(scope_,text)) mode=legacyMode;
-                        }
-                    }
-                    if(mode==2) lowered_.push_back(index);
-                    else if(mode==0) order_.push_back(index);
-                } catch(const std::invalid_argument &) { ended_=true; }
+        scan_.advance(count, total, [&](int index) {
+            const auto text=filterString(rawCandidate(index).text());
+            int mode=preferences_.mode(scope_,text);
+            if(!legacyScope_.empty()) {
+                const int legacyMode=preferences_.mode(legacyScope_,text);
+                if (legacyMode || preferences_.hasWord(legacyScope_,text)) {
+                    legacyWords.push_back(text);
+                    if (legacyScope_==scope_) mode=0;
+                    else if (!mode && !preferences_.hasWord(scope_,text)) mode=legacyMode;
+                }
             }
-            // Keep demoted entries available after one expanded block of normal choices.
-            if(order_.size()>=32 || ended_) {
-                order_.insert(order_.end(),lowered_.begin(),lowered_.end());lowered_.clear();
-            }
-        }
+            return mode;
+        }, budgeted_ ? ScanBudget{} : ScanBudget::unlimited());
         // One atomic save per expanded block, not one full-file write per
         // matching legacy word. Candidate classification above is identical
         // to claiming each word immediately, including duplicate candidates.
         preferences_.migrateWords(legacyScope_,scope_,legacyWords);
+        candidateRulesRevision_=preferences_.revision();
     }
     int originalIndex(int index) {
         if (ensureCandidateRevision()) beginPreferences(paged_);
         if(index<0) return -1;
         if(!prefer_) return index;
-        fillOrder(index+1);
-        return index<static_cast<int>(order_.size()) ? order_[index] : -1;
+        if (!budgeted_) fillOrder(index+1);
+        return index<static_cast<int>(scan_.order.size()) ? scan_.order[index] : -1;
     }
     std::vector<CandidateEntity> preferenceCandidates(int offset,int limit) {
         fillOrder(offset+limit);
         std::vector<CandidateEntity> result;
-        for(int i=offset;i<offset+limit && i<static_cast<int>(order_.size());++i)
-            result.emplace_back(candidateEntity(rawCandidate(order_[i])));
+        for(int i=offset;i<offset+limit && i<static_cast<int>(scan_.order.size());++i)
+            result.emplace_back(candidateEntity(rawCandidate(scan_.order[i])));
         return result;
     }
     AndroidFrontend *frontend_;
@@ -650,8 +671,8 @@ void AndroidFrontend::commitString(const std::string &str, const int cursor, int
     commitStringCallback(str, cursor, target);
 }
 
-void AndroidFrontend::updateCandidateList(const std::vector<CandidateEntity> &candidates, const int size) {
-    candidateListCallback(candidates, size);
+void AndroidFrontend::updateCandidateList(const std::vector<CandidateEntity> &candidates, const int size, const CandidateScanState &state) {
+    candidateListCallback(candidates, size, state);
 }
 
 void AndroidFrontend::updateClientPreedit(const Text &clientPreedit, int64_t target) {
@@ -767,6 +788,14 @@ void AndroidFrontend::setCandidateListCallback(const CandidateListCallback &call
 std::vector<CandidateEntity> AndroidFrontend::getCandidates(const int offset, const int limit) {
     if (!activeIC_) return {};
     return activeIC_->getCandidates(offset, limit);
+}
+
+CandidateBatchEntity AndroidFrontend::getCandidateBatch(int offset, int limit, int64_t revision, int64_t ruleRevision) {
+    if (!activeIC_) return {{}, {0,0,0,0,1,0,1}};
+    return activeIC_->getCandidateBatch(offset,limit,revision,ruleRevision);
+}
+CandidateScanState AndroidFrontend::getCandidateScanState() {
+    return activeIC_ ? activeIC_->getCandidateScanState() : CandidateScanState{0,0,0,0,1,0,1};
 }
 
 void AndroidFrontend::deleteSurrounding(const int before, const int after, int64_t target) {

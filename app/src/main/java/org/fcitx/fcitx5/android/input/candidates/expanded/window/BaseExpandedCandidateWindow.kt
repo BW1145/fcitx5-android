@@ -9,12 +9,16 @@ import android.graphics.drawable.ShapeDrawable
 import android.graphics.drawable.shapes.RectShape
 import android.view.View
 import androidx.lifecycle.lifecycleScope
+import androidx.paging.PagingData
 import androidx.paging.Pager
 import androidx.paging.PagingConfig
 import androidx.recyclerview.widget.RecyclerView
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.launch
+import org.fcitx.fcitx5.android.core.awaitCandidateProgress
+import org.fcitx.fcitx5.android.core.CandidateScanState
+import org.fcitx.fcitx5.android.core.CandidateWord
 import org.fcitx.fcitx5.android.core.CandidateAction
 import org.fcitx.fcitx5.android.core.FcitxEvent
 import org.fcitx.fcitx5.android.daemon.launchOnReady
@@ -92,7 +96,9 @@ abstract class BaseExpandedCandidateWindow<T : BaseExpandedCandidateWindow<T>> :
         if (it is KeyAction.LayoutSwitchAction) {
             when (it.act) {
                 ExpandedCandidateLayout.Keyboard.UpBtnLabel -> prevPage()
-                ExpandedCandidateLayout.Keyboard.DownBtnLabel -> nextPage()
+                ExpandedCandidateLayout.Keyboard.DownBtnLabel -> {
+                    if (budgetState != null && !candidateLayout.recyclerView.canScrollVertically(1)) loadBudgetPage() else nextPage()
+                }
             }
         } else {
             commonKeyActionListener.listener.onKeyAction(it, source)
@@ -131,6 +137,41 @@ abstract class BaseExpandedCandidateWindow<T : BaseExpandedCandidateWindow<T>> :
     }
 
     private var offsetJob: Job? = null
+    private var budgetState: CandidateScanState? = null
+    protected val budgetHasMore get() = budgetState?.let {
+        it.hasMoreAfter(adapter.offset + budgetWords.size)
+    } ?: false
+    private var budgetJob: Job? = null
+    private val budgetWords = ArrayList<CandidateWord>()
+
+    /** A user demand may span empty chunks, but stops at the first visible progress.
+     * Every chunk yields; new input, focus changes, and detach cancel the old generation.
+     */
+    private fun loadBudgetPage() {
+        val expected = budgetState ?: return
+        if (budgetJob?.isActive == true || !budgetHasMore) return
+        budgetJob = service.lifecycleScope.launch {
+            candidateLayout.loading.visibility = View.VISIBLE
+            try {
+                val batch = awaitCandidateProgress(expected) {
+                    fcitx.runOnReady {
+                        getCandidateBatch(adapter.offset + budgetWords.size, 48,
+                            expected.revision, expected.ruleRevision)
+                    }
+                }
+                if (budgetState?.sameGeneration(expected) != true ||
+                    !expected.sameGeneration(batch.state)) return@launch
+                budgetState = batch.state
+                horizontalCandidate.updateScanState(batch.state)
+                budgetWords.addAll(batch.candidates)
+                adapter.submitData(PagingData.from(budgetWords.toList()))
+                candidateLayout.pageDnBtn.isEnabled = budgetHasMore ||
+                    candidateLayout.recyclerView.canScrollVertically(1)
+            } finally {
+                candidateLayout.loading.visibility = View.GONE
+            }
+        }
+    }
 
     private val candidatesPager by lazy {
         Pager(
@@ -162,17 +203,28 @@ abstract class BaseExpandedCandidateWindow<T : BaseExpandedCandidateWindow<T>> :
         updateTabs(fcitx.runImmediately { inputPanelCached.tabs })
         offsetJob = service.lifecycleScope.launch {
             horizontalCandidate.expandedCandidateOffset.collect {
-                if (it <= 0) {
+                if (it <= 0 && !horizontalCandidate.hasMore) {
                     windowManager.attachWindow(KeyboardWindow)
                 } else {
                     candidateLayout.resetPosition()
-                    adapter.refreshWithOffset(it)
+                    if (horizontalCandidate.scanState?.budgeted == true) {
+                        budgetJob?.cancel()
+                        budgetState = horizontalCandidate.scanState
+                        budgetWords.clear()
+                        adapter.refreshWithOffset(it)
+                        adapter.submitData(PagingData.empty())
+                        candidateLayout.pageDnBtn.isEnabled = true
+                        loadBudgetPage()
+                    } else {
+                        budgetState = null
+                        adapter.refreshWithOffset(it)
+                    }
                 }
             }
         }
-        candidatesSubmitJob = service.lifecycleScope.launch {
-            candidatesPager.flow.collectLatest {
-                adapter.submitData(it)
+        if (horizontalCandidate.scanState?.budgeted != true) {
+            candidatesSubmitJob = service.lifecycleScope.launch {
+                candidatesPager.flow.collectLatest { adapter.submitData(it) }
             }
         }
     }
@@ -195,11 +247,24 @@ abstract class BaseExpandedCandidateWindow<T : BaseExpandedCandidateWindow<T>> :
     override fun onDetached() {
         bar.expandButtonStateMachine.push(
             ExpandedCandidatesDetached,
-            ExpandedCandidatesEmpty to (horizontalCandidate.adapter.total == adapter.offset)
+            ExpandedCandidatesEmpty to (!horizontalCandidate.hasMore && horizontalCandidate.adapter.itemCount <= adapter.offset)
         )
+        budgetJob?.cancel()
+        budgetState = null
+        budgetWords.clear()
         candidatesSubmitJob?.cancel()
         offsetJob?.cancel()
         candidateLayout.embeddedKeyboard.keyActionListener = null
+    }
+
+    override fun onCandidateUpdate(data: FcitxEvent.CandidateListEvent.Data) {
+        val previous = budgetState ?: return
+        if (data.scanState?.sameGeneration(previous) != true) {
+            budgetJob?.cancel()
+            budgetState = null
+            // Reopen on demand with the new list, never publish an old in-flight result.
+            windowManager.attachWindow(KeyboardWindow)
+        }
     }
 
     override fun onPreeditEmptyStateUpdate(empty: Boolean) {

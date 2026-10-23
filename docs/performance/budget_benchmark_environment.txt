@@ -1,0 +1,7 @@
+2026-10-23T09:37:14Z
+44f7b6b4cc42e8a09d943b75d8a68fbfe076a0a9
+g++ (Debian 14.2.0-19) 14.2.0
+Linux 6.18.55 x86_64
+model name	: AMD EPYC 9V74 80-Core Processor
+ea453e76507774a894c3f7ca3214fb9eadee00781d611536dc1a71d0065d669d  /workspace/scratch/33cf95385f89/ime-candidate-work/build/budget-benchmark/candidatescan.h
+81fd89afd0f07d85edef5e8c1f52dde556467abe8bd9a4bf211a451dad9a4dba  /workspace/scratch/33cf95385f89/ime-candidate-work/scripts/budget_benchmark.cpp

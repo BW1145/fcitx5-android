@@ -119,6 +119,9 @@ interface FcitxAPI {
 
     suspend fun activateAction(id: Int)
 
+    suspend fun getCandidateBatch(offset: Int, limit: Int, expectedRevision: Long = -1,
+        expectedRuleRevision: Long = -1): CandidateBatch
+    suspend fun getCandidateScanState(): CandidateScanState
     suspend fun getCandidates(offset: Int, limit: Int): Array<CandidateWord>
 
     suspend fun getCandidateActions(idx: Int): Array<CandidateAction>

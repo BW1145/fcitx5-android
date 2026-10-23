@@ -8,6 +8,8 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.res.Configuration
 import android.view.Gravity
+import android.view.View
+import android.widget.ProgressBar
 import androidx.constraintlayout.widget.ConstraintLayout
 import org.fcitx.fcitx5.android.R
 import org.fcitx.fcitx5.android.data.theme.Theme
@@ -118,6 +120,11 @@ class ExpandedCandidateLayout(context: Context, theme: Theme) : ConstraintLayout
         pageDnBtn = it.pageDnBtn
     }
 
+    val loading = ProgressBar(context).apply {
+        visibility = View.GONE
+        contentDescription = context.getString(R.string.loading)
+    }
+
     init {
         id = R.id.expanded_candidate_view
 
@@ -153,6 +160,10 @@ class ExpandedCandidateLayout(context: Context, theme: Theme) : ConstraintLayout
             leftToRightOf(tabsContainer)
             rightToLeftOf(embeddedKeyboard)
             bottomOfParent()
+        })
+        add(loading, lParams(width = dp(24), height = dp(24)) {
+            topOfParent()
+            centerHorizontally()
         })
         add(embeddedKeyboard, lParams {
             matchConstraintPercentWidth = 0.15f

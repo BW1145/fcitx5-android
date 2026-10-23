@@ -61,6 +61,9 @@ jobs:
           python3 scripts/prepare_personal_rime.py
           python3 -m unittest discover -s scripts -p 'test_ime_*.py' -v
           bash scripts/run_native_candidate_checks.sh
+          bash scripts/run_candidate_budget_contract.sh
+          bash scripts/check_candidate_frontend_syntax.sh
+          bash scripts/budget_benchmark.sh
           git fetch --depth=1 origin 6bfc3b5bb68d92a353bcc6fc9bf009a277e6d52a
           bash scripts/run_candidate_benchmark.sh
           bash scripts/build_personal_rime.sh x86_64
@@ -98,6 +101,9 @@ jobs:
             build/candidate-benchmark/*.txt
             build/candidate-benchmark/*-samples.csv
             build/personal-ci/*.txt
+            build/candidate-budget-contract/*.txt
+            build/budget-benchmark/*.csv
+            build/budget-benchmark/*.txt
             app/build/reports/tests/
             app/build/test-results/
           if-no-files-found: error

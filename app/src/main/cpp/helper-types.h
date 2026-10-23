@@ -14,6 +14,8 @@
 #include <fcitx/candidatelist.h>
 
 #include <utility>
+#include <array>
+#include <cstdint>
 
 class InputMethodStatus {
 public:
@@ -127,6 +129,13 @@ public:
             text(std::move(text)),
             comment(std::move(comment)),
             spaceBetweenComment(spaceBetweenComment) {}
+};
+
+// revision, rule revision, raw cursor, stable visible count, exhausted, budgeted, stale.
+using CandidateScanState = std::array<int64_t, 7>;
+struct CandidateBatchEntity {
+    std::vector<CandidateEntity> candidates;
+    CandidateScanState state{};
 };
 
 class PagedCandidateEntity {

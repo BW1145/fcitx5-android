@@ -15,7 +15,7 @@ sealed class FcitxEvent<T>(open val data: T) {
 
         override val eventType = EventType.Candidate
 
-        data class Data(val total: Int = -1, val candidates: Array<CandidateWord> = emptyArray()) {
+        data class Data(val total: Int = -1, val candidates: Array<CandidateWord> = emptyArray(), val scanState: CandidateScanState? = null) {
 
             override fun toString(): String =
                 "total=$total, candidates=[${candidates.joinToString(limit = 5)}]"
@@ -26,14 +26,14 @@ sealed class FcitxEvent<T>(open val data: T) {
 
                 other as Data
 
-                if (total != other.total) return false
+                if (total != other.total || scanState != other.scanState) return false
                 if (!candidates.contentEquals(other.candidates)) return false
 
                 return true
             }
 
             override fun hashCode(): Int {
-                var result = total
+                var result = 31 * total + (scanState?.hashCode() ?: 0)
                 result = 31 * result + candidates.contentHashCode()
                 return result
             }
@@ -277,7 +277,8 @@ sealed class FcitxEvent<T>(open val data: T) {
                 EventType.Candidate -> CandidateListEvent(
                     CandidateListEvent.Data(
                         params[0] as Int,
-                        params[1] as Array<CandidateWord>
+                        params[1] as Array<CandidateWord>,
+                        (params.getOrNull(2) as? LongArray)?.let(CandidateScanState::decode)
                     )
                 )
                 EventType.Commit -> CommitStringEvent(

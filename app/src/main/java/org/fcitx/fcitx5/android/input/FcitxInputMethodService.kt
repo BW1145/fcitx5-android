@@ -124,7 +124,11 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
 
     /** Input jobs are discarded when their editor/search session has ended. */
     fun postInputJob(token: Long = inputActionToken, block: suspend FcitxAPI.() -> Unit): Job =
-        postFcitxJob { if (isCurrentInputTarget(token)) block() }
+        postFcitxJob {
+            if (isCurrentInputTarget(token)) withContext(
+                org.fcitx.fcitx5.android.core.InputTargetGuard { isCurrentInputTarget(token) }
+            ) { block() }
+        }
 
     suspend fun onInputTarget(token: Long, block: () -> Unit) {
         withContext(Dispatchers.Main) { if (isCurrentInputTarget(token)) block() }

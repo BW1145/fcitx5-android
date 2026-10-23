@@ -18,7 +18,14 @@ int main(int argc,char **argv) {
     CandidatePreferences first(file),second(file);
     assert(first.load());assert(!second.load());
     assert(!first.hasScope(scope));
+    const auto emptyRevision=first.revision();
+    assert(first.snapshot(scope).rules==nullptr);
+    assert(first.load(true));assert(first.revision()==emptyRevision);
     first.set(scope,"你好",2);
+    const auto initialSnapshot=first.snapshot(scope);
+    assert(initialSnapshot.revision>emptyRevision);
+    assert(initialSnapshot.rules->at("你好")==2);
+    assert(first.load(true));assert(first.revision()==initialSnapshot.revision);
     assert(!second.load());assert(second.mode(scope,"你好")==2);
     // A replacement with the same length/time still has a different file identity.
     const auto time=fs::last_write_time(file);
@@ -28,6 +35,9 @@ int main(int argc,char **argv) {
     fs::last_write_time(replacement,time);
     fs::rename(replacement,file);
     assert(second.load());assert(first.mode(scope,"你好")==1);
+    assert(first.revision()>initialSnapshot.revision);
+    assert(initialSnapshot.rules->at("你好")==2); // Immutable old reader stays valid.
+    assert(first.snapshot(scope).rules->at("你好")==1);
     fs::remove(file);
     assert(first.load());assert(first.mode(scope,"你好")==0);
     // Legacy Rime scopes move to one schema without affecting other schemas.
