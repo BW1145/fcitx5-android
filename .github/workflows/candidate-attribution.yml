@@ -29,6 +29,34 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y extra-cmake-modules gettext
           sdkmanager 'platforms;android-36' 'build-tools;36.1.0' 'ndk;28.0.13004108' 'cmake;3.31.6'
+      - name: Verify KVM before compiling the profiling APK
+        run: |
+          set -euo pipefail
+          mkdir -p build/candidate-attribution
+          {
+            date -u +%FT%TZ
+            id
+            groups
+            ls -l /dev/kvm || true
+            stat /dev/kvm || true
+            echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+            sudo udevadm control --reload-rules
+            sudo udevadm trigger --name-match=kvm
+            sudo udevadm settle --timeout=30
+            ready=0
+            for attempt in $(seq 1 15); do
+              if test -c /dev/kvm && test -r /dev/kvm && test -w /dev/kvm; then
+                ready=1
+                echo "KVM character device readable/writable on attempt $attempt"
+                break
+              fi
+              echo "KVM not accessible on attempt $attempt"
+              ls -l /dev/kvm || true
+              sleep 1
+            done
+            stat /dev/kvm || true
+            test "$ready" -eq 1
+          } 2>&1 | tee build/candidate-attribution/kvm-preflight.txt
       - name: Build one profiling debug APK and verify collection store
         run: |
           mkdir -p build/candidate-attribution "$RUNNER_TEMP/attribution-apks/candidate"
@@ -41,12 +69,6 @@ jobs:
           ./gradlew --stacktrace -PbuildABI=x86_64 -PpersonalPackaging=lite -PcandidateAttribution=true :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest
           cp "$(find app/build/outputs/apk/debug -name '*.apk' -print -quit)" "$RUNNER_TEMP/attribution-apks/candidate/app.apk"
           cp "$(find app/build/outputs/apk/androidTest/debug -name '*.apk' -print -quit)" "$RUNNER_TEMP/attribution-apks/candidate/tests.apk"
-      - name: Enable KVM
-        run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-          test -r /dev/kvm && test -w /dev/kvm
       - name: Same APK, same rule file, ABBA enabled versus full bypass
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
         with:
