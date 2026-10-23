@@ -75,6 +75,13 @@ methods = {
         "matchingNativeAndServicePluginsAreDiscovered",
         "clipboardPluginBindsBackToItsMatchingIme",
     },
+    "PersonalCandidateBudgetTest": {
+        "realRimeBoundedPrefixContinuationRevisionsAndSelection",
+    },
+    "SpeechServiceContractTest": {
+        "explicitFakeServiceReturnsResultsThroughAndroidBinder",
+        "errorFiveFromAndroidBinderHasActionablePresentation",
+    },
     "PersonalKeyboardUiTest": {
         "screenTapEditsPinyinAndJapaneseCandidatesAppearWhileTyping",
     },
@@ -234,6 +241,11 @@ run_group personal-native 'org.fcitx.fcitx5.android.PersonalRimeTest,org.fcitx.f
 run_group personal-experience 'org.fcitx.fcitx5.android.PersonalExperienceTest'
 run_group personal-keyboard 'org.fcitx.fcitx5.android.PersonalKeyboardUiTest'
 run_group personal-search 'org.fcitx.fcitx5.android.PersonalContentSearchTest'
+# This section runs only in the API 35 smoke mode; compat/upgrade return above.
+run_group personal-budget 'org.fcitx.fcitx5.android.PersonalCandidateBudgetTest'
+adb exec-out run-as "$package" cat files/candidate-budget.json > "$output_root/personal-budget/candidate-budget.json" || true
+run_group personal-speech 'org.fcitx.fcitx5.android.SpeechServiceContractTest'
+
 
 mkdir -p app/build/reports/androidTests/connected/screens
 for image in pinyin-edit japanese-predictions keyboard-final; do

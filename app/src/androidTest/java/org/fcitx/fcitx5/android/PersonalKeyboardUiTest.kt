@@ -210,10 +210,19 @@ class PersonalKeyboardUiTest {
             var beforeSentence=""
             instrumentation.runOnMainSync { beforeSentence=activityRule.activity.editor.text.toString() }
             type("renshengjishinian")
+            // Touch injection/Android idle does not drain the IME's ordered input queue.
+            // Capture a candidate only after the final synthetic letter reached Rime.
+            await("Complete sentence input reached the engine") {
+                fcitx.runImmediately {
+                    inputPanelCached.preedit.toString().replace(" ", "") == "renshengjishinian"
+                }
+            }
             await("The sentence has candidates") { fcitx.runImmediately { getCandidates(0,1).isNotEmpty() } }
             val sentence=fcitx.runOnReady { getCandidates(0,1).first().text }
             val sentencePinyin=fcitx.runOnReady { inputPanelCached.preedit.toString() }
-            await("The sentence candidate is visible") { imeNodes().any { it.text?.toString()==sentence } }
+            await("The sentence candidate '$sentence' is visible for '$sentencePinyin'") {
+                imeNodes().any { it.text?.toString()==sentence }
+            }
             tapNode(imeNodes().first { it.text?.toString()==sentence })
             await("Sentence commits once and leaves no pinyin in the keyboard") {
                 var value=""
