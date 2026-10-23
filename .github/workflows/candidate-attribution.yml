@@ -63,6 +63,7 @@ jobs:
           git rev-parse HEAD > build/candidate-attribution/source-commit.txt
           git rev-parse HEAD^{tree} > build/candidate-attribution/source-tree.txt
           CMAKE="$ANDROID_HOME/cmake/3.31.6/bin/cmake" bash scripts/attribution/test_compile_gate.sh
+          python3 scripts/test_rime_personal_context.py | tee build/candidate-attribution/context-read-test.txt
           bash scripts/attribution/test_store.sh | tee build/candidate-attribution/store-test.txt
           python3 scripts/prepare_personal_rime.py
           bash scripts/build_personal_rime.sh x86_64

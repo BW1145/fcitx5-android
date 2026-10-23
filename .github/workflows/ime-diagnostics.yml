@@ -61,6 +61,7 @@ jobs:
           python3 scripts/prepare_personal_rime.py
           python3 -m unittest discover -s scripts -p 'test_ime_*.py' -v
           bash scripts/run_native_candidate_checks.sh
+          python3 scripts/test_rime_personal_context.py
           bash scripts/run_candidate_budget_contract.sh
           bash scripts/check_candidate_frontend_syntax.sh
           bash scripts/budget_benchmark.sh
