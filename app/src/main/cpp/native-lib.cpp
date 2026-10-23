@@ -9,6 +9,7 @@
 #include <memory>
 #include <future>
 #include <fstream>
+#include <stdexcept>
 
 #include <android/log.h>
 
@@ -425,16 +426,23 @@ public:
     }
 
 #ifdef FCITX_CANDIDATE_ATTRIBUTION
+    fcitx::AddonInstance *attributionRime() {
+        // Rime is on-demand. Ready alone does not mean it has been activated.
+        return ime_attribution::requireAddon(p_instance->addonManager().addon("rime", false));
+    }
     void attributionConfigure(int mode) {
+        auto *rime=attributionRime();
         p_frontend->call<fcitx::IAndroidFrontend::attributionConfigure>(mode);
-        p_instance->addonManager().addon("rime")->call<fcitx::IRimeEngine::attributionConfigure>(mode);
+        rime->call<fcitx::IRimeEngine::attributionConfigure>(mode);
         ime_attribution::configure(mode);
     }
     std::vector<int64_t> attributionDrain() {
+        auto *rime=attributionRime();
         auto result=ime_attribution::drain();
         for (const auto &part : {p_frontend->call<fcitx::IAndroidFrontend::attributionDrain>(),
-            p_instance->addonManager().addon("rime")->call<fcitx::IRimeEngine::attributionDrain>()})
-            for (size_t i=0;i<result.size();++i) result[i]+=part[i];
+            rime->call<fcitx::IRimeEngine::attributionDrain>()}) {
+            ime_attribution::merge(result,part);
+        }
         result.insert(result.begin(),1); // Schema version, then ns/count pairs.
         return result;
     }
@@ -1422,14 +1430,24 @@ extern "C" JNIEXPORT void JNICALL
 Java_org_fcitx_fcitx5_android_debug_CandidateAttribution_configure(JNIEnv *env, jclass, jint mode) {
     RETURN_IF_NOT_RUNNING
     if (mode<0 || mode>2) { env->ThrowNew(env->FindClass("java/lang/IllegalArgumentException"), "Invalid attribution mode");return; }
-    Fcitx::Instance().attributionConfigure(mode);
+    try {
+        Fcitx::Instance().attributionConfigure(mode);
+    } catch (const std::exception &error) {
+        env->ThrowNew(env->FindClass("java/lang/IllegalStateException"), error.what());
+    }
 }
 extern "C" JNIEXPORT jlongArray JNICALL
 Java_org_fcitx_fcitx5_android_debug_CandidateAttribution_drain(JNIEnv *env, jclass) {
     RETURN_VALUE_IF_NOT_RUNNING(nullptr)
-    const auto values=Fcitx::Instance().attributionDrain();
-    std::vector<jlong> converted(values.begin(),values.end());
-    auto result=env->NewLongArray(converted.size());
-    env->SetLongArrayRegion(result,0,converted.size(),converted.data());return result;
+    try {
+        const auto values=Fcitx::Instance().attributionDrain();
+        std::vector<jlong> converted(values.begin(),values.end());
+        auto result=env->NewLongArray(converted.size());
+        if (!result) return nullptr;
+        env->SetLongArrayRegion(result,0,converted.size(),converted.data());return result;
+    } catch (const std::exception &error) {
+        env->ThrowNew(env->FindClass("java/lang/IllegalStateException"), error.what());
+        return nullptr;
+    }
 }
 #endif

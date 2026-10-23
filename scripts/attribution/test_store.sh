@@ -6,6 +6,13 @@ cat > "$out/a.cpp" <<'CPP'
 #include "candidateattribution.h"
 #include <cassert>
 extern "C" void testTimers() {
+ bool missing=false,mismatch=false;int dummy=0;
+ try { ime_attribution::requireAddon<int>(nullptr); } catch(const std::runtime_error &) { missing=true; }
+ assert(missing);assert(ime_attribution::requireAddon(&dummy)==&dummy);
+ std::vector<int64_t> target{1,2};
+ try { ime_attribution::merge(target,{3}); } catch(const std::runtime_error &) { mismatch=true; }
+ assert(mismatch);assert((target==std::vector<int64_t>{1,2}));
+ ime_attribution::merge(target,{3,4});assert((target==std::vector<int64_t>{4,6}));
  ime_attribution::configure(1);
  { IME_ATTR_SCOPE(ProcessKey); auto result=IME_ATTR_TIME(GetContext, 7); assert(result==7); }
  auto sample=ime_attribution::drain();assert(sample[1]==1 && sample[3]==1);assert(sample[0]>=sample[2]);
@@ -29,7 +36,7 @@ int main(int argc,char**argv) {
  setupA(1);setupB(1);markA();markA();markB();assert(readA()==2);assert(readB()==1);assert(readA()==0);
  setupA(0);markA();assert(readA()==0);setupA(2);markA();assert(readA()==1);
  ((void(*)())dlsym(a,"testTimers"))();
- std::cout<<"PASS inclusive timers, per-DSO isolation, shared cross-TU store, drain/reset, disabled collection\n";
+ std::cout<<"PASS absent-addon/schema guards, inclusive timers, per-DSO isolation, shared cross-TU store, drain/reset, disabled collection\n";
 }
 CPP
 for name in one two; do

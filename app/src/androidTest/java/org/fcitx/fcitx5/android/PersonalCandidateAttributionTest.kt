@@ -22,6 +22,9 @@ class PersonalCandidateAttributionTest {
         org.junit.Assume.assumeTrue("Explicit profiling-only invocation required",
             InstrumentationRegistry.getArguments().getString("candidateAttribution")=="true")
         val context=InstrumentationRegistry.getInstrumentation().targetContext
+        val progressFile=context.filesDir.resolve("candidate-attribution-progress.txt")
+        fun progress(stage:String) {progressFile.appendText("${SystemClock.elapsedRealtime()} $stage\n")}
+        progressFile.writeText("");progress("create engine")
         val engine=Fcitx(context)
         val ready=async(start=CoroutineStart.UNDISPATCHED) {engine.eventFlow.filterIsInstance<FcitxEvent.ReadyEvent>().first()}
         val file=ExperienceData.root.resolve("candidate-preferences.tsv")
@@ -47,25 +50,30 @@ class PersonalCandidateAttributionTest {
             })
         }
         suspend fun type(input:String) {engine.reset();input.forEach {engine.sendKey(it)}}
-        engine.start()
+        progress("start engine");engine.start()
         try {
-            withTimeout(180_000) {ready.await()};configure(0)
+            withTimeout(180_000) {ready.await()};progress("engine ready")
+            progress("activate rime")
             engine.activate(android.os.Process.myUid(),context.packageName);engine.focus();engine.activateIme("rime")
-            rules(emptySet())
+            progress("rime activated configure off before");configure(0);progress("configure off after")
+            progress("clear test rules");rules(emptySet())
             withTimeout(180_000) {while(true) {type("nihao");if(engine.getCandidates(0,16).any {it.text=="你好"})break;delay(250)}}
-            type("shi");val original=engine.getCandidates(0,128).map {it.text}
+            progress("fixture ready reference range");type("shi");val original=engine.getCandidates(0,128).map {it.text}
             assertTrue(original.size>=96)
             val hidden=original.take(64).toSet()
             val filtered=original.filterNot {it in hidden}.take(16);assertEquals(16,filtered.size)
             report.put("fixture","shi").put("referenceCount",original.size).put("hiddenCount",hidden.size)
                 .put("originalPrefixHash",hash(original.take(16))).put("filteredPrefixHash",hash(filtered))
             for(scenario in listOf("none","hide64")) {
+                progress("scenario $scenario")
                 configure(0);rules(if(scenario=="none") emptySet() else hidden)
                 val fileHash=hash(listOf(file.readText()))
                 for((block,mode) in listOf(2,1,1,2).withIndex()) {
+                    progress("block $block mode $mode configure")
                     configure(mode)
                     repeat(3) {type("shi");engine.getCandidates(0,16)}
                     repeat(20) {iteration ->
+                        progress("sample $scenario $block $iteration prepare")
                         engine.reset();engine.sendKey('s');engine.sendKey('h');drain()
                         val initialStart=SystemClock.elapsedRealtimeNanos();engine.sendKey('i')
                         val initialWall=SystemClock.elapsedRealtimeNanos()-initialStart
@@ -80,6 +88,9 @@ class PersonalCandidateAttributionTest {
                             .put("candidateHash",hash(candidates.map {it.text})).put("candidateCount",candidates.size)
                             .put("initialWallNs",initialWall).put("explicitRangeWallNs",rangeWall)
                             .put("initialNative",JSONArray(initialStats.toList())).put("rangeNative",JSONArray(rangeStats.toList())))
+                        // File I/O stays outside both measured phases; retain completed samples on native crash.
+                        context.filesDir.resolve("candidate-attribution.json").writeText(report.toString())
+                        progress("sample $scenario $block $iteration complete")
                     }
                     assertEquals("Rule file unchanged between conditions",fileHash,hash(listOf(file.readText())))
                 }
