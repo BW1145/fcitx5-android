@@ -1,0 +1,80 @@
+Measured 2026-10-23 UTC on shared Linux x86_64 host; synthetic inputs only.
+Not an Android/Rime/UI or OPPO-device latency measurement.
+The frozen header SHA256 is the exact tested production source identity.
+
+timing no_rules_first16 p50_us=0.701 p95_us=0.801 n=301
+timing no_rules_lookup256 p50_us=19.869 p95_us=31.487 n=301
+timing hide_1_first16 p50_us=2.274 p95_us=2.333 n=301
+timing hide_1_lookup256 p50_us=21.001 p95_us=33.339 n=301
+timing lower_1_first16 p50_us=2.294 p95_us=2.473 n=301
+timing lower_1_lookup256 p50_us=20.541 p95_us=32.989 n=301
+timing hide_10_first16 p50_us=3.396 p95_us=5.068 n=301
+timing hide_10_lookup256 p50_us=23.886 p95_us=86.188 n=301
+timing lower_10_first16 p50_us=3.475 p95_us=3.755 n=301
+timing lower_10_lookup256 p50_us=23.645 p95_us=63.705 n=301
+timing hide_100_first16 p50_us=14.772 p95_us=17.736 n=301
+timing hide_100_lookup256 p50_us=27.962 p95_us=40.951 n=301
+timing lower_100_first16 p50_us=14.993 p95_us=16.996 n=301
+timing lower_100_lookup256 p50_us=28.923 p95_us=33.650 n=301
+timing hide_5000_first16 p50_us=988.348 p95_us=1193.232 n=301
+timing hide_5000_lookup256 p50_us=43.064 p95_us=63.184 n=301
+timing reload_5000 p50_us=6704.737 p95_us=8761.933 n=41
+timing cold_scope_lookup_5000 p50_us=1.202 p95_us=1.793 n=51
+timing cold_first16_hide5000 p50_us=986.606 p95_us=1225.169 n=51
+timing lower_5000_first16 p50_us=1073.214 p95_us=1528.550 n=301
+timing lower_5000_lookup256 p50_us=42.353 p95_us=74.280 n=301
+timing ten_scopes_500_lookup256 p50_us=40.550 p95_us=76.954 n=301
+timing ten_scopes_500_reload p50_us=7215.166 p95_us=8079.129 n=41
+timing ten_scopes_cold_lookup p50_us=1.763 p95_us=3.435 n=51
+timing legacy_scope_no_hit p50_us=0.150 p95_us=0.171 n=301
+timing legacy_word_no_hit p50_us=0.210 p95_us=0.211 n=301
+timing save_3_rules p50_us=67.651 p95_us=139.478 n=41
+timing legacy_scope_hit_3 p50_us=120.299 p95_us=218.546 n=51
+timing legacy_word_hit p50_us=104.075 p95_us=346.846 n=51
+timing legacy_anthy_16_hits_in_1000 p50_us=3812.920 p95_us=5159.055 n=51
+timing frontend_legacy_16_hits_in_1000 p50_us=3642.485 p95_us=4138.785 n=51
+correctness order_and_cache_digest=14300057955522202748 PASS
+timing no_rules_first16 p50_us=0.691 p95_us=0.832 n=301
+timing no_rules_lookup256 p50_us=0.721 p95_us=0.741 n=301
+timing hide_1_first16 p50_us=0.931 p95_us=0.961 n=301
+timing hide_1_lookup256 p50_us=0.941 p95_us=0.962 n=301
+timing lower_1_first16 p50_us=0.942 p95_us=1.182 n=301
+timing lower_1_lookup256 p50_us=0.941 p95_us=1.783 n=301
+timing hide_10_first16 p50_us=1.202 p95_us=1.292 n=301
+timing hide_10_lookup256 p50_us=1.863 p95_us=2.824 n=301
+timing lower_10_first16 p50_us=1.272 p95_us=1.793 n=301
+timing lower_10_lookup256 p50_us=1.833 p95_us=2.204 n=301
+timing hide_100_first16 p50_us=2.613 p95_us=4.197 n=301
+timing hide_100_lookup256 p50_us=3.004 p95_us=3.585 n=301
+timing lower_100_first16 p50_us=2.734 p95_us=3.154 n=301
+timing lower_100_lookup256 p50_us=2.955 p95_us=3.895 n=301
+timing hide_5000_first16 p50_us=138.446 p95_us=226.267 n=301
+timing hide_5000_lookup256 p50_us=4.406 p95_us=4.667 n=301
+timing reload_5000 p50_us=8673.168 p95_us=9477.727 n=41
+timing cold_scope_lookup_5000 p50_us=0.871 p95_us=2.063 n=51
+timing cold_first16_hide5000 p50_us=176.633 p95_us=375.389 n=51
+timing lower_5000_first16 p50_us=142.211 p95_us=233.788 n=301
+timing lower_5000_lookup256 p50_us=4.407 p95_us=4.907 n=301
+timing ten_scopes_500_lookup256 p50_us=9.514 p95_us=14.562 n=301
+timing ten_scopes_500_reload p50_us=8898.044 p95_us=13281.613 n=41
+timing ten_scopes_cold_lookup p50_us=1.202 p95_us=2.144 n=51
+timing legacy_scope_no_hit p50_us=0.101 p95_us=0.111 n=301
+timing legacy_word_no_hit p50_us=0.240 p95_us=0.260 n=301
+timing save_3_rules p50_us=101.571 p95_us=132.217 n=41
+timing legacy_scope_hit_3 p50_us=84.886 p95_us=110.224 n=51
+timing legacy_word_hit p50_us=79.969 p95_us=103.884 n=51
+timing legacy_anthy_16_hits_in_1000 p50_us=7182.708 p95_us=10694.630 n=51
+timing frontend_legacy_16_hits_in_1000 p50_us=699.863 p95_us=752.951 n=51
+correctness order_and_cache_digest=14300057955522202748 PASS
+baseline=6bfc3b5bb68d92a353bcc6fc9bf009a277e6d52a
+current_worktree=3e83c1173d47655a4612405644b371f2cc62e52b
+g++ (Debian 14.2.0-19) 14.2.0
+Linux x86_64
+34666287a1c3dde8bee86bb8187ba28894644fe08afd6c4e30ceba94f5914523  /workspace/scratch/33cf95385f89/ime-candidate-work/build/candidate-benchmark/baseline.h
+ff1d8bd873299191760c65aad5ddec680ac3bafdfc8bd942d0487999352040d5  /workspace/scratch/33cf95385f89/ime-candidate-work/build/candidate-benchmark/current.h
+740416c821524527f355831347b31eb4389226691c14657257315e456b1e4f3c  /workspace/scratch/33cf95385f89/ime-candidate-work/scripts/benchmark_candidate_preferences.cpp
+
+LD_PRELOAD rename instrumentation: baseline successful_renames=16; current successful_renames=1.
+Original native candidate cache and preferred-candidate correctness checks: PASS.
+Final frozen header ASan + UBSan full harness: PASS, same digest 14300057955522202748.
+LeakSanitizer disabled (ASAN_OPTIONS=detect_leaks=0) because container denies ptrace; no leak-check claim.

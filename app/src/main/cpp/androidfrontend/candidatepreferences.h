@@ -5,6 +5,7 @@
 #include <filesystem>
 #include <map>
 #include <vector>
+#include <unordered_map>
 #include <sstream>
 #include <cctype>
 #include <cerrno>
@@ -16,6 +17,7 @@ namespace fcitx {
 inline std::string preferenceHex(const std::string &s) {
     static const char *digits="0123456789abcdef";
     std::string result;
+    result.reserve(s.size()*2);
     for(unsigned char c:s) { result+=digits[c>>4];result+=digits[c&15]; }
     return result;
 }
@@ -66,13 +68,21 @@ public:
         auto &value=cache();
         if(!force && value.loaded && value.version==version) return false;
         auto rules=read(path_);
-        value.rules=std::move(rules);value.version=version;value.loaded=true;
+        value.replaceRules(std::move(rules));value.version=version;value.loaded=true;
         return true;
     }
+    bool empty() const { return cache().rules.empty(); }
     int mode(const std::string &scope,const std::string &word) const {
-        const auto &rules=cache().rules;
-        auto found=rules.find(scope+"\t"+preferenceHex(word));
-        return found==rules.end()?0:found->second;
+        const auto &scopes=cache().scopes;
+        const auto found=scopes.find(scope);
+        if (found==scopes.end()) return 0;
+        const auto entry=found->second.find(word);
+        return entry==found->second.end()?0:entry->second;
+    }
+    bool hasWord(const std::string &scope,const std::string &word) const {
+        const auto &scopes=cache().scopes;
+        const auto found=scopes.find(scope);
+        return found!=scopes.end() && found->second.find(word)!=found->second.end();
     }
     bool hasScope(const std::string &scope) const {
         const auto prefix=scope+"\t";
@@ -100,24 +110,40 @@ public:
         write(std::move(rules));
     }
     void migrateWord(const std::string &from,const std::string &to,const std::string &word) {
-        const auto suffix="\t"+preferenceHex(word);
-        const auto found=cache().rules.find(from+suffix);
-        if (found==cache().rules.end()) return;
-        auto rules=cache().rules;
-        rules.emplace(to+suffix,found->second);rules.erase(from+suffix);
-        write(std::move(rules));
+        migrateWords(from,to,{word});
     }
+    void migrateWords(const std::string &from,const std::string &to,const std::vector<std::string> &words) {
+        const auto &current=cache().rules;
+        if (std::none_of(words.begin(),words.end(),[&](const auto &word) {
+            return current.find(from+"\t"+preferenceHex(word))!=current.end();
+        })) return;
+        auto rules=current;
+        bool changed=false;
+        for (const auto &word:words) {
+            const auto suffix="\t"+preferenceHex(word);
+            const auto found=rules.find(from+suffix);
+            if (found==rules.end()) continue;
+            rules.emplace(to+suffix,found->second);
+            rules.erase(found);
+            changed=true;
+        }
+        if (changed) write(std::move(rules));
+    }
+
 private:
     void write(Rules rules) {
+        // Allocate the complete replacement before changing the on-disk file.
+        Cache replacement;
+        replacement.replaceRules(std::move(rules));
         const auto target=path_;std::filesystem::create_directories(target.parent_path());
         auto temp=target;temp+=".tmp";
         std::ofstream output(temp,std::ios::trunc);
-        for(const auto &[key,mode]:rules) output<<key<<'\t'<<(mode==1?"hide":"lower")<<'\n';
+        for(const auto &[key,mode]:replacement.rules) output<<key<<'\t'<<(mode==1?"hide":"lower")<<'\n';
         output.close();
         if(!output) throw std::runtime_error("Unable to save candidate preferences");
         std::filesystem::rename(temp,target);
-        auto &value=cache();value.rules=std::move(rules);value.loaded=true;
-        value.version=stamp();
+        replacement.loaded=true;replacement.version=stamp();
+        cache()=std::move(replacement);
     }
     struct Stamp {
         bool exists=false;
@@ -129,11 +155,41 @@ private:
             return exists==other.exists && modified==other.modified && nanos==other.nanos && size==other.size && inode==other.inode;
         }
     };
-    struct Cache { bool loaded=false;Stamp version;std::map<std::string,int> rules; };
+    struct Cache {
+        bool loaded=false;
+        Stamp version;
+        Rules rules;
+        std::unordered_map<std::string,std::unordered_map<std::string,int>> scopes;
+        void replaceRules(Rules replacement) {
+            decltype(scopes) index;
+            // read() normalizes valid rows, and set() hex-encodes words. Build
+            // the decoded lookup only at a file load/save boundary, never on
+            // the first key querying a potentially very large scope.
+            for (const auto &[key,mode]:replacement) {
+                const auto split=key.rfind('\t');
+                if (split==std::string::npos) continue;
+                const auto hex=key.substr(split+1);
+                // Arbitrary merge callers must not make an invalid key match
+                // a valid word, nor cause an out-of-bounds decode.
+                if (hex.size()%2 || hex.find_first_not_of("0123456789abcdef")!=std::string::npos) continue;
+                std::string text;text.reserve(hex.size()/2);
+                for (size_t i=0;i<hex.size();i+=2) {
+                    auto nibble=[](char c) { return c<='9' ? c-'0' : c-'a'+10; };
+                    text+=static_cast<char>((nibble(hex[i])<<4)|nibble(hex[i+1]));
+                }
+                index[key.substr(0,split)].emplace(std::move(text),mode);
+            }
+            rules=std::move(replacement);
+            scopes=std::move(index);
+        }
+    };
     std::filesystem::path path_;
+    mutable Cache *cached_=nullptr;
     Cache &cache() const {
+        // std::map keeps element addresses stable as other contexts add paths.
         static std::map<std::filesystem::path,Cache> files;
-        return files[path_];
+        if (!cached_) cached_=&files[path_];
+        return *cached_;
     }
     Stamp stamp() const {
         struct stat info{};

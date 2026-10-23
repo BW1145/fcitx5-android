@@ -89,7 +89,7 @@ int main(int argc,char **argv) {
     }
     for(auto *values:{&baseline,&cached}) std::sort(values->begin(),values->end());
     std::cout<<"5000 candidate rules; shared cache, replacement, deletion checks passed\n"
-             <<"legacy_parse_p50_ms="<<baseline[15]<<" legacy_parse_p95_ms="<<baseline[28]<<'\n'
+             <<"forced_reload_p50_ms="<<baseline[15]<<" forced_reload_p95_ms="<<baseline[28]<<'\n'
              <<"cached_lookup_p50_ms="<<cached[15]<<" cached_lookup_p95_ms="<<cached[28]<<'\n';
     fs::remove(file);
 }

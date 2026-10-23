@@ -291,6 +291,7 @@ public:
         if(actionIdx == -1001 || actionIdx == -1002) {
             const auto &word=rawCandidate(idx);
             auto text=filterString(word.text());
+            ensurePreferenceScope();
             preferences_.set(scope_,text,actionIdx == -1001 ? 1 : 2);
             if(actionIdx == -1001) {
                 if(auto actionable=list->toActionable()) {
@@ -415,7 +416,7 @@ private:
     std::string scope_;
     std::string legacyScope_;
     std::string lastCommitted_;
-    bool prefer_=false, paged_=false, ended_=false;
+    bool prefer_=false, paged_=false, ended_=false, scopeReady_=false;
     int scanned_=0;
     std::vector<int> order_, lowered_;
 
@@ -462,6 +463,17 @@ private:
         ensureCandidateRevision(true);
         preferences_.load();paged_=paged;ended_=false;scanned_=0;
         order_.clear();lowered_.clear();
+        scopeReady_=false;
+        prefer_=false;
+        // Without custom rules, do not query the engine's context
+        // and encode a scope on every key just to discover there is no rule.
+        // A first long-press action resolves its scope immediately before save.
+        if (preferences_.empty()) return;
+        ensurePreferenceScope();
+        prefer_=preferences_.hasScope(scope_) || (!legacyScope_.empty() && preferences_.hasScope(legacyScope_));
+    }
+    void ensurePreferenceScope() {
+        if (scopeReady_) return;
         auto *entry=frontend_->instance()->inputMethodEntry(this);
         auto preedit=inputPanel().preedit().toString();
         if(preedit.empty()) preedit=inputPanel().clientPreedit().toString();
@@ -478,7 +490,7 @@ private:
             preferenceHex(preedit.empty() ? "predict:"+lastCommitted_ : preferenceContext(preedit));
         if (engine.rfind("rime:",0)==0) preferences_.migrateScope(
             preferenceHex("rime")+"\t"+preferenceHex(preedit.empty() ? "predict:"+lastCommitted_ : preferenceContext(preedit)), scope_);
-        prefer_=preferences_.hasScope(scope_) || (!legacyScope_.empty() && preferences_.hasScope(legacyScope_));
+        scopeReady_=true;
     }
     const CandidateWord &rawCandidate(int index) {
         const auto &list=inputPanel().candidateList();
@@ -490,6 +502,7 @@ private:
         if(!list) { ended_=true;return; }
         auto bulk=paged_ ? nullptr : list->toBulk();
         int total=bulk ? bulk->totalSize() : list->size();
+        std::vector<std::string> legacyWords;
         while(!ended_ && static_cast<int>(order_.size())<count) {
             if(total>=0 && scanned_>=total) ended_=true;
             else {
@@ -499,8 +512,17 @@ private:
                     const auto text=filterString(word.text());
                     // Old Anthy rows did not save readings. Claim a legacy choice
                     // only when that word actually appears for this reading.
-                    if(!legacyScope_.empty()) preferences_.migrateWord(legacyScope_,scope_,text);
                     int mode=preferences_.mode(scope_,text);
+                    if(!legacyScope_.empty()) {
+                        const int legacyMode=preferences_.mode(legacyScope_,text);
+                        if (legacyMode || preferences_.hasWord(legacyScope_,text)) {
+                            legacyWords.push_back(text);
+                            // A same-scope migration historically removes the
+                            // row; otherwise an existing scoped choice wins.
+                            if (legacyScope_==scope_) mode=0;
+                            else if (!mode && !preferences_.hasWord(scope_,text)) mode=legacyMode;
+                        }
+                    }
                     if(mode==2) lowered_.push_back(index);
                     else if(mode==0) order_.push_back(index);
                 } catch(const std::invalid_argument &) { ended_=true; }
@@ -510,6 +532,10 @@ private:
                 order_.insert(order_.end(),lowered_.begin(),lowered_.end());lowered_.clear();
             }
         }
+        // One atomic save per expanded block, not one full-file write per
+        // matching legacy word. Candidate classification above is identical
+        // to claiming each word immediately, including duplicate candidates.
+        preferences_.migrateWords(legacyScope_,scope_,legacyWords);
     }
     int originalIndex(int index) {
         if (ensureCandidateRevision()) beginPreferences(paged_);
