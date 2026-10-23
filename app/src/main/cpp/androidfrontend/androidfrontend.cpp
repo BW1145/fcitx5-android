@@ -76,6 +76,7 @@ public:
     }
 
     void updateInputPanel() {
+        IME_ATTR_SCOPE(InputPanel);
         const InputPanel &ip = inputPanel();
         if (ip.empty()) {
           frontend_->updateInputPanel(/*preedit=*/{},
@@ -106,6 +107,7 @@ public:
     void reloadPreferences() { preferences_.load(true); }
 
     void updateCandidatesBulk() {
+        IME_ATTR_SCOPE(InitialUpdate);
         beginPreferences(false);
         if (prefer_) {
             auto candidates = preferenceCandidates(0,16);
@@ -244,7 +246,10 @@ public:
     }
 
     CandidateScanState getCandidateScanState() {
-        preferences_.load();
+#ifdef FCITX_CANDIDATE_ATTRIBUTION
+        if (!ime_attribution::bypass())
+#endif
+        IME_ATTR_TIME(RulesLoad, preferences_.load());
         if (ensureCandidateRevision()) beginPreferences(paged_);
         return scanState();
     }
@@ -254,6 +259,7 @@ public:
                 scan_.exhausted ? 1 : 0, budgeted_ ? 1 : 0, 0};
     }
     CandidateBatchEntity getCandidateBatch(int offset, int limit, int64_t revision, int64_t ruleRevision) {
+        IME_ATTR_SCOPE(BatchRequest);
         auto state=getCandidateScanState();
         if ((revision>=0 && revision!=state[0]) || (ruleRevision>=0 && ruleRevision!=state[1])) {
             state[6]=1;return {{},state};
@@ -493,7 +499,15 @@ private:
     }
 
     void beginPreferences(bool paged) {
-        preferences_.load();
+        IME_ATTR_SCOPE(BeginPreferences);
+#ifdef FCITX_CANDIDATE_ATTRIBUTION
+        if (ime_attribution::bypass()) {
+            // Same engine/list and saved rules, but no custom lookup/filter work.
+            ensureCandidateRevision(true);paged_=paged;scan_.reset();
+            prefer_=false;budgeted_=false;scopeReady_=false;return;
+        }
+#endif
+        IME_ATTR_TIME(RulesLoad, preferences_.load());
         ensureCandidateRevision(true);
         paged_=paged;scan_.reset();budgeted_=false;
         scopeReady_=false;
@@ -509,6 +523,7 @@ private:
         candidateRulesRevision_=preferences_.revision();
     }
     void ensurePreferenceScope() {
+        IME_ATTR_SCOPE(ScopeResolve);
         if (scopeReady_) return;
         auto *entry=frontend_->instance()->inputMethodEntry(this);
         auto preedit=inputPanel().preedit().toString();
@@ -540,8 +555,10 @@ private:
         int total=bulk ? bulk->totalSize() : list->size();
         std::vector<std::string> legacyWords;
         scan_.advance(count, total, [&](int index) {
-            const auto text=filterString(rawCandidate(index).text());
-            int mode=preferences_.mode(scope_,text);
+            IME_ATTR_COUNT(ScanItems);
+            const auto &raw=IME_ATTR_TIME(RawScanFetch, rawCandidate(index));
+            const auto text=filterString(raw.text());
+            int mode=IME_ATTR_TIME(Classify, preferences_.mode(scope_,text));
             if(!legacyScope_.empty()) {
                 const int legacyMode=preferences_.mode(legacyScope_,text);
                 if (legacyMode || preferences_.hasWord(legacyScope_,text)) {
@@ -584,6 +601,8 @@ private:
     }
 
     CandidateEntity candidateEntity(const CandidateWord &candidate) {
+        IME_ATTR_SCOPE(OutputMaterialize);
+        IME_ATTR_COUNT(OutputItems);
         auto result = CandidateEntity("", filterString(candidate.text()),
                                filterString(candidate.comment()), candidate.spaceBetweenComment());
         result.revision = candidateRevision_;

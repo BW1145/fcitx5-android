@@ -8,6 +8,14 @@ if(NOT EXISTS "${PERSONAL_SCHEMA}")
     message(FATAL_ERROR "Custom Rime data is not prepared. Run python3 scripts/prepare_personal_rime.py, then bash scripts/build_personal_rime.sh <abi> before Gradle.")
 endif()
 
+option(FCITX_CANDIDATE_ATTRIBUTION "Synthetic debug-only attribution experiment" OFF)
+if(FCITX_CANDIDATE_ATTRIBUTION)
+    if(NOT CMAKE_BUILD_TYPE STREQUAL "Debug")
+        message(FATAL_ERROR "Candidate attribution is forbidden outside Debug builds")
+    endif()
+    add_compile_definitions(FCITX_CANDIDATE_ATTRIBUTION=1)
+endif()
+
 # For reproducible build
 add_link_options("LINKER:--hash-style=gnu,--build-id=none")
 

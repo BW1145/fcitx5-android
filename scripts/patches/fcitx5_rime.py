@@ -58,3 +58,23 @@ def apply(source):
     if (session) engine_->api()->set_option(session, "_no_learning",
         ic_.capabilityFlags().test(CapabilityFlag::Sensitive) ||
         ic_.capabilityFlags().test(CapabilityFlag::Password));''')
+
+    # Test-only timers are compiled out unless the app's guarded Debug option is enabled.
+    replace(source / "rimeengine.h", '#include "personal-rime-public.h"',
+            '#include "personal-rime-public.h"\n#include "candidateattribution.h"')
+    replace(source / "rimeengine.h", '    auto &factory() { return factory_; }', '''    auto &factory() { return factory_; }
+#ifdef FCITX_CANDIDATE_ATTRIBUTION
+    void attributionConfigure(int mode) { ime_attribution::configure(mode); }
+    std::vector<int64_t> attributionDrain() { return ime_attribution::drain(); }
+    FCITX_ADDON_EXPORT_FUNCTION(RimeEngine, attributionConfigure);
+    FCITX_ADDON_EXPORT_FUNCTION(RimeEngine, attributionDrain);
+#endif''')
+    for expression in ["api->process_key(session, sym, intStates)",
+                       "api->process_key(session, event.rawKey().sym(), intStates)"]:
+        replace(source / "rimestate.cpp", expression, "IME_ATTR_TIME(ProcessKey, " + expression + ")")
+    replace(source / "rimestate.cpp", "api->get_context(session, &context)",
+            "IME_ATTR_TIME(GetContext, api->get_context(session, &context))")
+    replace(source / "rimecandidate.cpp", "            return *globalCandidateWords_[index];",
+            "            IME_ATTR_COUNT(RimeFetchHit);\n            return *globalCandidateWords_[index];")
+    replace(source / "rimecandidate.cpp", "    if (!api->candidate_list_from_index(session, &iter, idx)",
+            "    IME_ATTR_SCOPE(RimeFetchMiss);\n    if (!api->candidate_list_from_index(session, &iter, idx)")

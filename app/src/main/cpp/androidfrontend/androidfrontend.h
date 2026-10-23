@@ -13,6 +13,8 @@
 #include "androidfrontend_public.h"
 #include "inputcontextcache.h"
 
+#include "../candidateattribution.h"
+
 namespace fcitx {
 
 class AndroidInputContext;
@@ -20,6 +22,12 @@ class AndroidInputContext;
 class AndroidFrontend : public AddonInstance {
 public:
     explicit AndroidFrontend(Instance *instance);
+#ifdef FCITX_CANDIDATE_ATTRIBUTION
+    void attributionConfigure(int mode) { ime_attribution::configure(mode); }
+    std::vector<int64_t> attributionDrain() { return ime_attribution::drain(); }
+    FCITX_ADDON_EXPORT_FUNCTION(AndroidFrontend, attributionConfigure);
+    FCITX_ADDON_EXPORT_FUNCTION(AndroidFrontend, attributionDrain);
+#endif
 
     Instance *instance() { return instance_; }
 

@@ -50,6 +50,7 @@ android {
         @Suppress("UnstableApiUsage")
         externalNativeBuild {
             cmake {
+                arguments("-DFCITX_CANDIDATE_ATTRIBUTION=" + if (providers.gradleProperty("candidateAttribution").orNull == "true") "ON" else "OFF")
                 targets(
                     // jni
                     "native-lib",

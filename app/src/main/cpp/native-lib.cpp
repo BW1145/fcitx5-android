@@ -47,6 +47,7 @@
 #include "helper-types.h"
 #include "object-conversion.h"
 #include "personal-rime-public.h"
+#include "candidateattribution.h"
 
 
 class Fcitx {
@@ -423,6 +424,22 @@ public:
         action->activate(ic);
     }
 
+#ifdef FCITX_CANDIDATE_ATTRIBUTION
+    void attributionConfigure(int mode) {
+        p_frontend->call<fcitx::IAndroidFrontend::attributionConfigure>(mode);
+        p_instance->addonManager().addon("rime")->call<fcitx::IRimeEngine::attributionConfigure>(mode);
+        ime_attribution::configure(mode);
+    }
+    std::vector<int64_t> attributionDrain() {
+        auto result=ime_attribution::drain();
+        for (const auto &part : {p_frontend->call<fcitx::IAndroidFrontend::attributionDrain>(),
+            p_instance->addonManager().addon("rime")->call<fcitx::IRimeEngine::attributionDrain>()})
+            for (size_t i=0;i<result.size();++i) result[i]+=part[i];
+        result.insert(result.begin(),1); // Schema version, then ns/count pairs.
+        return result;
+    }
+#endif
+
     std::vector<CandidateEntity> getCandidates(int offset, int limit) {
         return p_frontend->call<fcitx::IAndroidFrontend::getCandidates>(offset, limit);
     }
@@ -621,6 +638,7 @@ Java_org_fcitx_fcitx5_android_core_Fcitx_startupFcitx(
     }
 
     auto candidateListCallback = [](const std::vector<CandidateEntity> &candidates, const int total, const CandidateScanState &state) {
+        IME_ATTR_SCOPE(CandidateJni);
         auto env = GlobalRef->AttachEnv();
         auto candidatesArray = JRef<jobjectArray>(env, env->NewObjectArray(static_cast<int>(candidates.size()), GlobalRef->Candidate, nullptr));
         int i = 0;
@@ -1146,6 +1164,7 @@ JNIEXPORT jobjectArray JNICALL
 Java_org_fcitx_fcitx5_android_core_Fcitx_getFcitxCandidateBatch(JNIEnv *env, jclass, jint offset, jint limit, jlong revision, jlong ruleRevision) {
     RETURN_VALUE_IF_NOT_RUNNING(nullptr)
     auto batch=Fcitx::Instance().getCandidateBatch(offset,limit,revision,ruleRevision);
+    IME_ATTR_SCOPE(CandidateJni);
     auto candidates=JRef<jobjectArray>(env,env->NewObjectArray(batch.candidates.size(),GlobalRef->Candidate,nullptr));
     for (size_t i=0;i<batch.candidates.size();++i) {
         auto value=JRef(env,candidateEntityToObject(env,batch.candidates[i]));
@@ -1397,3 +1416,20 @@ Java_org_fcitx_fcitx5_android_utils_Ini_writeAsIni(JNIEnv *env, jclass clazz, js
 }
 
 #pragma GCC diagnostic pop
+
+#ifdef FCITX_CANDIDATE_ATTRIBUTION
+extern "C" JNIEXPORT void JNICALL
+Java_org_fcitx_fcitx5_android_debug_CandidateAttribution_configure(JNIEnv *env, jclass, jint mode) {
+    RETURN_IF_NOT_RUNNING
+    if (mode<0 || mode>2) { env->ThrowNew(env->FindClass("java/lang/IllegalArgumentException"), "Invalid attribution mode");return; }
+    Fcitx::Instance().attributionConfigure(mode);
+}
+extern "C" JNIEXPORT jlongArray JNICALL
+Java_org_fcitx_fcitx5_android_debug_CandidateAttribution_drain(JNIEnv *env, jclass) {
+    RETURN_VALUE_IF_NOT_RUNNING(nullptr)
+    const auto values=Fcitx::Instance().attributionDrain();
+    std::vector<jlong> converted(values.begin(),values.end());
+    auto result=env->NewLongArray(converted.size());
+    env->SetLongArrayRegion(result,0,converted.size(),converted.data());return result;
+}
+#endif

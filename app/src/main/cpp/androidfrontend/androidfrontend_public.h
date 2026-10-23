@@ -121,4 +121,10 @@ FCITX_ADDON_DECLARE_FUNCTION(AndroidFrontend, setSwitchInputMethodCallback,
 FCITX_ADDON_DECLARE_FUNCTION(AndroidFrontend, getCandidateBatch, CandidateBatchEntity(int, int, int64_t, int64_t))
 FCITX_ADDON_DECLARE_FUNCTION(AndroidFrontend, getCandidateScanState, CandidateScanState())
 
+
+#ifdef FCITX_CANDIDATE_ATTRIBUTION
+FCITX_ADDON_DECLARE_FUNCTION(AndroidFrontend, attributionConfigure, void(int))
+FCITX_ADDON_DECLARE_FUNCTION(AndroidFrontend, attributionDrain, std::vector<int64_t>())
+#endif
+
 #endif // FCITX5_ANDROID_ANDROIDFRONTEND_PUBLIC_H

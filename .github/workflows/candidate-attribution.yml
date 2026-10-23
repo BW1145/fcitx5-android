@@ -1,0 +1,80 @@
+name: Candidate layer attribution (profiling only)
+on:
+  push:
+    branches: ['fix/ime-attribution-20261023']
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: candidate-attribution-${{ github.ref }}
+  cancel-in-progress: false
+env:
+  MAIN_APPLICATION_ID: org.fcitx.fcitx5.android.bw1145
+jobs:
+  same-apk-abba:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          submodules: recursive
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd
+      - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6
+      - name: Install pinned toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y extra-cmake-modules gettext
+          sdkmanager 'platforms;android-36' 'build-tools;36.1.0' 'ndk;28.0.13004108' 'cmake;3.31.6'
+      - name: Build one profiling debug APK and verify collection store
+        run: |
+          mkdir -p build/candidate-attribution "$RUNNER_TEMP/attribution-apks/candidate"
+          git rev-parse HEAD > build/candidate-attribution/source-commit.txt
+          git rev-parse HEAD^{tree} > build/candidate-attribution/source-tree.txt
+          CMAKE="$ANDROID_HOME/cmake/3.31.6/bin/cmake" bash scripts/attribution/test_compile_gate.sh
+          bash scripts/attribution/test_store.sh | tee build/candidate-attribution/store-test.txt
+          python3 scripts/prepare_personal_rime.py
+          bash scripts/build_personal_rime.sh x86_64
+          ./gradlew --stacktrace -PbuildABI=x86_64 -PpersonalPackaging=lite -PcandidateAttribution=true :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest
+          cp "$(find app/build/outputs/apk/debug -name '*.apk' -print -quit)" "$RUNNER_TEMP/attribution-apks/candidate/app.apk"
+          cp "$(find app/build/outputs/apk/androidTest/debug -name '*.apk' -print -quit)" "$RUNNER_TEMP/attribution-apks/candidate/tests.apk"
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+          test -r /dev/kvm && test -w /dev/kvm
+      - name: Same APK, same rule file, ABBA enabled versus full bypass
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          disable-linux-hw-accel: false
+          script: bash scripts/run_candidate_attribution.sh "$RUNNER_TEMP/attribution-apks"
+      - name: Retain actual binary hashes and build provenance
+        if: always()
+        run: |
+          mkdir -p build/candidate-attribution "$RUNNER_TEMP/attribution-apks"
+          python3 scripts/record_ime_provenance.py "$RUNNER_TEMP/attribution-apks"
+          find "$RUNNER_TEMP/attribution-apks" -name '*.apk' -exec sha256sum {} \; > build/candidate-attribution/apk-sha256.txt
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: candidate-attribution-${{ github.sha }}
+          path: |
+            build/candidate-attribution/
+            app/build/reports/tests/
+            app/build/test-results/
+          if-no-files-found: error
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9
+        if: always()
+        with:
+          name: candidate-attribution-apks-${{ github.sha }}
+          path: ${{ runner.temp }}/attribution-apks/
+          retention-days: 7
+          if-no-files-found: error
