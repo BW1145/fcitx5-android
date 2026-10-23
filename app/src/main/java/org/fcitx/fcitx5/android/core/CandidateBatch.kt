@@ -90,3 +90,27 @@ fun candidateSelectionIndex(sym: Int, simpleModifiers: Boolean, up: Boolean): In
         48 -> 9
         else -> null
     }
+
+/** First data and state arrive together; never preflight with a separate state request. */
+suspend fun collectCandidateRange(
+    offset: Int, limit: Int,
+    fetch: suspend (Int, Int, Long, Long) -> CandidateBatch
+): Array<CandidateWord> {
+    if (offset < 0 || limit <= 0 || offset > Int.MAX_VALUE - limit) return emptyArray()
+    val first = fetch(offset, limit, -1L, -1L)
+    if (first.state.stale) return emptyArray()
+    if (!first.state.budgeted || first.state.exhausted || first.candidates.size >= limit)
+        return first.candidates
+    val result = ArrayList<CandidateWord>(limit.coerceAtMost(64))
+    result.addAll(first.candidates)
+    var state = first.state
+    while (result.size < limit && state.pending) {
+        kotlinx.coroutines.delay(1)
+        val batch = fetch(offset + result.size, limit - result.size,
+            first.state.revision, first.state.ruleRevision)
+        if (!first.state.sameGeneration(batch.state)) return emptyArray()
+        result.addAll(batch.candidates)
+        state = batch.state
+    }
+    return result.toTypedArray()
+}
