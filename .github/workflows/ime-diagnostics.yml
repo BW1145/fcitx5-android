@@ -18,6 +18,34 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
           submodules: recursive
+      - name: Verify KVM before compiling either diagnostic APK
+        run: |
+          set -euo pipefail
+          mkdir -p "$RUNNER_TEMP/ime-kvm"
+          {
+            date -u +%FT%TZ
+            id
+            groups
+            ls -l /dev/kvm || true
+            stat /dev/kvm || true
+            echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+            sudo udevadm control --reload-rules
+            sudo udevadm trigger --name-match=kvm
+            sudo udevadm settle --timeout=30
+            ready=0
+            for attempt in $(seq 1 15); do
+              if test -c /dev/kvm && test -r /dev/kvm && test -w /dev/kvm; then
+                ready=1
+                echo "KVM character device readable/writable on attempt $attempt"
+                break
+              fi
+              echo "KVM not accessible on attempt $attempt"
+              ls -l /dev/kvm || true
+              sleep 1
+            done
+            stat /dev/kvm || true
+            test "$ready" -eq 1
+          } 2>&1 | tee "$RUNNER_TEMP/ime-kvm/kvm-preflight.txt"
       - name: Preserve identical benchmark source and candidate commit
         run: |
           mkdir -p "$RUNNER_TEMP/ime-harness" "$RUNNER_TEMP/ime-apks/baseline" "$RUNNER_TEMP/ime-apks/candidate"
@@ -70,12 +98,6 @@ jobs:
           ./gradlew --stacktrace -PbuildABI=x86_64 -PpersonalPackaging=lite :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest
           cp "$(find app/build/outputs/apk/debug -name '*.apk' -print -quit)" "$RUNNER_TEMP/ime-apks/candidate/app.apk"
           cp "$(find app/build/outputs/apk/androidTest/debug -name '*.apk' -print -quit)" "$RUNNER_TEMP/ime-apks/candidate/tests.apk"
-      - name: Enable KVM and verify hardware acceleration
-        run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-          test -r /dev/kvm && test -w /dev/kvm
       - name: A/B real Android engine and fake-service Binder contract
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
         with:
@@ -89,6 +111,7 @@ jobs:
         if: always()
         run: |
           mkdir -p build/ime-diagnostics
+          cp "$RUNNER_TEMP/ime-kvm/kvm-preflight.txt" build/ime-diagnostics/ || true
           cp "$RUNNER_TEMP/ime-apks/"*-commit.txt build/ime-diagnostics/ || true
           python3 scripts/record_ime_provenance.py "$RUNNER_TEMP/ime-apks"
           find "$RUNNER_TEMP/ime-apks" -name '*.apk' -exec sha256sum {} \; > build/ime-diagnostics/apk-sha256.txt
