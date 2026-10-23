@@ -244,6 +244,10 @@ run_group personal-search 'org.fcitx.fcitx5.android.PersonalContentSearchTest'
 # This section runs only in the API 35 smoke mode; compat/upgrade return above.
 run_group personal-budget 'org.fcitx.fcitx5.android.PersonalCandidateBudgetTest'
 adb exec-out run-as "$package" cat files/candidate-budget.json > "$output_root/personal-budget/candidate-budget.json" || true
+# Match the validated Binder fixture: both APKs already declare RECORD_AUDIO.
+# A grant failure is fatal under set -e; never silently skip this prerequisite.
+adb shell pm grant "$package" android.permission.RECORD_AUDIO
+adb shell pm grant "$test_package" android.permission.RECORD_AUDIO
 run_group personal-speech 'org.fcitx.fcitx5.android.SpeechServiceContractTest'
 
 
