@@ -6,9 +6,17 @@ def apply(source):
     replace(source / "rimeengine.h", '    auto &factory() { return factory_; }', '''    auto &factory() { return factory_; }
     std::vector<std::string> personalContext(InputContext *ic) {
         auto *s = state(ic);
-        if (!s || !s->session(false)) return {};
-        const char *input = api_->get_input(s->session(false));
-        return {s->currentSchema(), input ? input : ""};
+        if (!s) return {};
+        const auto session = s->session(false);
+        if (!session) return {};
+        // Read directly: currentSchema()/getStatus() also synchronizes
+        // _no_learning in our privacy patch, which can recompute composition.
+        RIME_STRUCT(RimeStatus, status);
+        if (!api_->get_status(session, &status)) return {};
+        const std::string schema = status.schema_id ? status.schema_id : "";
+        api_->free_status(&status);
+        const char *input = api_->get_input(session);
+        return {schema, input ? input : ""};
     }
     FCITX_ADDON_EXPORT_FUNCTION(RimeEngine, personalContext);
     std::vector<std::string> personalSchemas(const std::string &dictionary) {
