@@ -17,7 +17,7 @@ import java.security.MessageDigest
 
 /** Actual Rime/JNI batch contract. 10k synthetic scan proof is a separate native test. */
 class PersonalCandidateBudgetTest {
-    @Test fun realRimeBoundedPrefixContinuationRevisionsAndSelection() = runBlocking {
+    @Test fun realRimeBoundedPrefixContinuationRevisionsAndSelection(): Unit = runBlocking {
         val context=InstrumentationRegistry.getInstrumentation().targetContext
         val engine=Fcitx(context)
         val ready=async(start=CoroutineStart.UNDISPATCHED) { engine.eventFlow.filterIsInstance<FcitxEvent.ReadyEvent>().first() }
