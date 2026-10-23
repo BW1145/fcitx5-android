@@ -18,7 +18,7 @@ import java.security.MessageDigest
 
 /** Explicit profiling build only: identical APK/data and ABBA custom on vs full bypass. */
 class PersonalCandidateAttributionTest {
-    @Test fun sameBuildCustomLayerAttribution()=runBlocking {
+    @Test fun sameBuildCustomLayerAttribution(): Unit=runBlocking {
         org.junit.Assume.assumeTrue("Explicit profiling-only invocation required",
             InstrumentationRegistry.getArguments().getString("candidateAttribution")=="true")
         val context=InstrumentationRegistry.getInstrumentation().targetContext
