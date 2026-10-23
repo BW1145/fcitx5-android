@@ -12,7 +12,6 @@ import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.runBlocking
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import org.fcitx.fcitx5.android.FcitxApplication
 import org.fcitx.fcitx5.android.R
@@ -238,21 +237,12 @@ class Fcitx(private val context: Context) : FcitxAPI, FcitxLifecycleOwner {
         CandidateBatch(raw[0] as Array<CandidateWord>, CandidateScanState.decode(raw[1] as LongArray))
     }
 
-    // Compatibility callers explicitly request a full range; UI uses single bounded batches.
-    override suspend fun getCandidates(offset: Int, limit: Int): Array<CandidateWord> {
-        if (offset < 0 || limit <= 0 || offset > Int.MAX_VALUE - limit) return emptyArray()
-        val initial = getCandidateScanState()
-        val result = ArrayList<CandidateWord>()
-        do {
-            val batch = getCandidateBatch(offset + result.size, limit - result.size,
-                initial.revision, initial.ruleRevision)
-            if (!initial.sameGeneration(batch.state)) return emptyArray()
-            result.addAll(batch.candidates)
-            if (result.size >= limit || batch.state.exhausted || !batch.state.budgeted) break
-            delay(1) // Yield the engine thread; never spin through hidden candidates in one JNI call.
-        } while (true)
-        return result.toTypedArray()
-    }
+    // One engine roundtrip for the common complete/unbudgeted range. Only an
+    // actual pending filtered range needs further cooperative continuation.
+    override suspend fun getCandidates(offset: Int, limit: Int): Array<CandidateWord> =
+        collectCandidateRange(offset, limit) { start, count, revision, ruleRevision ->
+            getCandidateBatch(start, count, revision, ruleRevision)
+        }
 
     private suspend fun sendAfterSelection(sym: Int, states: UInt, up: Boolean, send: () -> Unit) {
         val index = candidateSelectionIndex(sym, (states and KeyState.SimpleMask.state) != 0u, up)
@@ -260,9 +250,25 @@ class Fcitx(private val context: Context) : FcitxAPI, FcitxLifecycleOwner {
             withFcitxContext { if (inputTargetIsCurrent()) send() }
             return
         }
+        // Do not make two dispatcher roundtrips just to send a ready selection.
+        // Native state check and send share one engine turn; recheck the UI target token.
+        val firstPending = withFcitxContext {
+            if (!inputTargetIsCurrent()) return@withFcitxContext null
+            val state = CandidateScanState.decode(getFcitxCandidateScanState())
+            if (!state.budgeted || state.available > index || !state.pending) {
+                if (inputTargetIsCurrent()) send()
+                null
+            } else state
+        } ?: return
+        var useFirstPending = true
         try {
             sendPendingCandidateSelection(
-                readState = { getCandidateScanState() },
+                readState = {
+                    if (useFirstPending) {
+                        useFirstPending = false
+                        firstPending
+                    } else getCandidateScanState()
+                },
                 awaitReady = { initial ->
                     candidateLoading.value = initial.available <= index && initial.pending
                     awaitCandidateSelection(initial, index) {
@@ -275,7 +281,7 @@ class Fcitx(private val context: Context) : FcitxAPI, FcitxLifecycleOwner {
                         else {
                             val current = CandidateScanState.decode(getFcitxCandidateScanState())
                             // Check and send atomically. A same-target rule edit retries, not drops, the key.
-                            if (!expected.sameGeneration(current)) false
+                            if (!expected.sameGeneration(current) || !inputTargetIsCurrent()) false
                             else { send(); true }
                         }
                     }

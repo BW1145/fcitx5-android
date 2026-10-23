@@ -7,6 +7,58 @@ import org.junit.Test
 
 class CandidateScanStateTest {
     private val initial = CandidateScanState(7, 4, 0, 0, false, true)
+    @Test fun completeAndUnbudgetedRangesUseOneFetchWithoutStatePreflight() = runBlocking {
+        for (budgeted in listOf(false, true)) {
+            var calls = 0
+            val words = arrayOf(CandidateWord("", "first", ""), CandidateWord("", "second", ""))
+            val result = collectCandidateRange(0, 2) { offset, limit, revision, ruleRevision ->
+                calls++
+                assertEquals(0, offset); assertEquals(2, limit)
+                assertEquals(-1L, revision); assertEquals(-1L, ruleRevision)
+                CandidateBatch(words, initial.copy(budgeted = budgeted, available = 2))
+            }
+            assertEquals(1, calls)
+            assertSame(words, result)
+        }
+    }
+    @Test fun partialRangeContinuesOnlyWithExactFirstGeneration() = runBlocking {
+        var calls = 0
+        val result = collectCandidateRange(5, 2) { offset, limit, revision, ruleRevision ->
+            calls++
+            if (calls == 1) {
+                assertEquals(-1L, revision); assertEquals(-1L, ruleRevision)
+                CandidateBatch(emptyArray(), initial.copy(cursor = 32))
+            } else {
+                assertEquals(initial.revision, revision); assertEquals(initial.ruleRevision, ruleRevision)
+                assertEquals(5 + calls - 2, offset); assertEquals(4 - calls, limit)
+                CandidateBatch(arrayOf(CandidateWord("", "word-$calls", "")), initial.copy(available = 4 + calls))
+            }
+        }
+        assertEquals(3, calls)
+        assertEquals(listOf("word-2", "word-3"), result.map { it.text })
+    }
+    @Test fun rangeRejectsChangedGenerationWithoutPublishingCollectedPrefix() = runBlocking {
+        var calls = 0
+        val result = collectCandidateRange(0, 2) { _, _, revision, _ ->
+            calls++
+            if (calls == 1) CandidateBatch(arrayOf(CandidateWord("", "old", "")), initial.copy(available = 1))
+            else {
+                assertEquals(initial.revision, revision)
+                CandidateBatch(emptyArray(), initial.copy(revision = 8, stale = true))
+            }
+        }
+        assertEquals(2, calls); assertTrue(result.isEmpty())
+    }
+    @Test fun exhaustedOrInvalidRangeNeverStartsAnotherFetch() = runBlocking {
+        var calls = 0
+        val fetch: suspend (Int, Int, Long, Long) -> CandidateBatch = { _, _, _, _ ->
+            calls++; CandidateBatch(emptyArray(), initial.copy(exhausted = true))
+        }
+        assertTrue(collectCandidateRange(0, 16, fetch).isEmpty()); assertEquals(1, calls)
+        assertTrue(collectCandidateRange(-1, 16, fetch).isEmpty())
+        assertTrue(collectCandidateRange(Int.MAX_VALUE, 16, fetch).isEmpty())
+        assertEquals(1, calls)
+    }
     @Test fun repeatedSameTargetRuleEditsRetryUnsentSelectionExactlyOnce() = runBlocking {
         var current = initial
         var sends = 0
