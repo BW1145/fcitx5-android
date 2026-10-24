@@ -1,4 +1,5 @@
 from .common import replace
+from .rime_edit import apply as apply_edit
 
 def apply(source):
     replace(source / "rimeengine.h", '#include "rimesession.h"',
@@ -66,3 +67,4 @@ def apply(source):
     if (session) engine_->api()->set_option(session, "_no_learning",
         ic_.capabilityFlags().test(CapabilityFlag::Sensitive) ||
         ic_.capabilityFlags().test(CapabilityFlag::Password));''')
+    apply_edit(source)

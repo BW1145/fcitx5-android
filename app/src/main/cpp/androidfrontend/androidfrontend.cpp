@@ -744,6 +744,14 @@ void AndroidFrontend::repositionCursor(int position) {
     activeIC_->invokeAction(event);
 }
 
+bool AndroidFrontend::repositionPinyinCursor(int position) {
+    if (!activeIC_) return false;
+    const auto *entry = instance_->inputMethodEntry(activeIC_);
+    if (!entry || entry->uniqueName() != "rime") return false;
+    auto *addon = instance_->addonManager().addon("rime");
+    return addon && addon->call<IRimeEngine::personalMoveCursor>(activeIC_, position);
+}
+
 void AndroidFrontend::focusInputContext(bool focus) {
     if (!activeIC_) return;
     if (focus) {

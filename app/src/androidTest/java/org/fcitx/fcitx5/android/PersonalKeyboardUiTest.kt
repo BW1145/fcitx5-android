@@ -198,9 +198,8 @@ class PersonalKeyboardUiTest {
             }
             screenshot("pinyin-edit")
 
-            // After editing in the middle, move to the end before committing a
-            // complete candidate. The pinyin row must clear without another key.
-            fcitx.runOnReady { moveCursor(inputPanelCached.preedit.codePointCountUntil(inputPanelCached.preedit.length)) }
+            // The full candidate is already available while the pinyin caret
+            // remains in the middle. No explicit move to the end is allowed.
             await("Edited Chinese candidate is visible") { imeNodes().any { it.text?.toString()=="你好" } }
             tapNode(imeNodes().first { it.text?.toString()=="你好" })
             await("Selecting a candidate clears its pinyin immediately") {

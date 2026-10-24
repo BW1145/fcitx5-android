@@ -39,6 +39,7 @@ public:
     bool candidateMatches(int idx, const std::string &text, int64_t revision);
     void resetInputContext();
     void repositionCursor(int idx);
+    bool repositionPinyinCursor(int idx);
     void focusInputContext(bool focus);
     void activateInputContext(int uid, const std::string &pkgName);
     void deactivateInputContext(int uid);
@@ -77,6 +78,7 @@ private:
     FCITX_ADDON_EXPORT_FUNCTION(AndroidFrontend, candidateMatches);
     FCITX_ADDON_EXPORT_FUNCTION(AndroidFrontend, resetInputContext);
     FCITX_ADDON_EXPORT_FUNCTION(AndroidFrontend, repositionCursor);
+    FCITX_ADDON_EXPORT_FUNCTION(AndroidFrontend, repositionPinyinCursor);
     FCITX_ADDON_EXPORT_FUNCTION(AndroidFrontend, focusInputContext);
     FCITX_ADDON_EXPORT_FUNCTION(AndroidFrontend, activateInputContext);
     FCITX_ADDON_EXPORT_FUNCTION(AndroidFrontend, activeInputContext);

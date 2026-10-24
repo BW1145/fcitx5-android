@@ -144,6 +144,10 @@ public:
         p_frontend->call<fcitx::IAndroidFrontend::repositionCursor>(position);
     }
 
+    bool repositionPinyinCursor(int position) {
+        return p_frontend->call<fcitx::IAndroidFrontend::repositionPinyinCursor>(position);
+    }
+
     void toggleInputMethod() {
         p_instance->toggle();
     }
@@ -874,6 +878,12 @@ JNIEXPORT void JNICALL
 Java_org_fcitx_fcitx5_android_core_Fcitx_repositionCursor(JNIEnv *env, jclass clazz, jint position) {
     FCITX_DEBUG() << "repositionCursor: to " << position;
     Fcitx::Instance().repositionCursor(position);
+}
+
+extern "C"
+JNIEXPORT jboolean JNICALL
+Java_org_fcitx_fcitx5_android_core_Fcitx_repositionPinyinCursor(JNIEnv *, jclass, jint position) {
+    return Fcitx::Instance().repositionPinyinCursor(position);
 }
 
 extern "C"

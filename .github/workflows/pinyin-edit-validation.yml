@@ -1,0 +1,96 @@
+name: Pinyin edit validation only
+
+on:
+  push:
+    branches: ['verify/pinyin-full-refresh-20261024']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: pinyin-edit-validation-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  MAIN_APPLICATION_ID: org.fcitx.fcitx5.android.bw1145
+
+jobs:
+  x86-64-lite-debug:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
+        with:
+          submodules: recursive
+          persist-credentials: false
+      - name: Check KVM and capture immutable inputs
+        run: |
+          bash scripts/verify_personal_kvm.sh
+          mkdir -p build/pinyin-validation
+          git rev-parse HEAD > build/pinyin-validation/commit.txt
+          git submodule status --recursive > build/pinyin-validation/submodules.txt
+          cp scripts/personal-rime-dependencies.json build/pinyin-validation/
+          df -h > build/pinyin-validation/disk-before.txt
+          free -h > build/pinyin-validation/memory-before.txt
+      - uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@be39fa834029ff78f1a44aa3bb0819b8fc2bd8fd # v4
+      - uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6
+        with:
+          cache-read-only: true
+      - name: Install exact project toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y extra-cmake-modules gettext
+          sdkmanager 'platforms;android-36' 'build-tools;36.1.0' 'ndk;28.0.13004108' 'cmake;3.31.6'
+      - name: Host caret, routing and candidate contracts
+        run: |
+          set -euo pipefail
+          {
+            python3 scripts/test_rime_edit.py
+            python3 scripts/test_rime_personal_context.py
+            bash scripts/run_candidate_budget_contract.sh
+            bash scripts/run_native_candidate_checks.sh
+          } 2>&1 | tee build/pinyin-validation/host-tests.log
+      - name: Build only x86_64 lite debug IME and tests
+        run: |
+          set -euo pipefail
+          {
+            python3 scripts/prepare_personal_rime.py
+            bash scripts/build_personal_rime.sh x86_64
+            ./gradlew --no-daemon --max-workers=2 --stacktrace \
+              -PbuildABI=x86_64 -PpersonalPackaging=lite \
+              :app:testDebugUnitTest :app:assembleDebug :app:assembleDebugAndroidTest
+          } 2>&1 | tee build/pinyin-validation/build.log
+          find app/build/outputs/apk -name '*.apk' -exec sha256sum {} \; > build/pinyin-validation/apk-sha256.txt
+      - name: Real Rime whole-input edits, screen taps and candidate budget
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2
+        with:
+          api-level: 35
+          arch: x86_64
+          target: google_apis
+          disable-animations: true
+          disable-linux-hw-accel: false
+          script: bash scripts/run_personal_smoke.sh pinyin-edit
+      - name: Preserve resource and KVM evidence
+        if: always()
+        run: |
+          mkdir -p build/pinyin-validation
+          cp "$RUNNER_TEMP/ime-kvm/kvm-preflight.txt" build/pinyin-validation/ || true
+          df -h > build/pinyin-validation/disk-after.txt
+          free -h > build/pinyin-validation/memory-after.txt
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        if: always()
+        with:
+          name: pinyin-edit-validation-${{ github.sha }}
+          retention-days: 7
+          if-no-files-found: error
+          path: |
+            build/pinyin-validation/
+            build/personal-ci/*.txt
+            build/candidate-budget-contract/*.txt
+            app/build/reports/tests/
+            app/build/test-results/
+            app/build/outputs/androidTest-results/

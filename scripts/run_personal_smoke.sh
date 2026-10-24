@@ -208,7 +208,7 @@ if [[ "$mode" == "compat" ]]; then
     exit "$result"
 fi
 
-if [[ "$mode" != "full" ]]; then
+if [[ "$mode" != "full" && "$mode" != "pinyin-edit" ]]; then
     echo "Unknown smoke test mode: $mode" >&2
     exit 2
 fi
@@ -232,6 +232,20 @@ PY
 # Install the already verified APKs once. Test execution must not rebuild or re-sign them.
 adb install -r "$app_apk"
 adb install -r -t "$test_apk"
+if [[ "$mode" == "pinyin-edit" ]]; then
+    # Isolated debug validation: no optional plugin APKs or release artifacts.
+    # Use the SAME run_group parser as full smoke, including required-test counts,
+    # crash/skip rejection and baseline IME restoration between engine instances.
+    run_group pinyin-edit 'org.fcitx.fcitx5.android.PersonalRimeTest#preeditEditingAndPagingWork,org.fcitx.fcitx5.android.PersonalRimeTest#preeditTapMapsToTextWithoutCountingCursorMarker'
+    run_group pinyin-keyboard 'org.fcitx.fcitx5.android.PersonalKeyboardUiTest'
+    run_group pinyin-budget 'org.fcitx.fcitx5.android.PersonalCandidateBudgetTest'
+    adb exec-out run-as "$package" cat files/candidate-budget.json > "$output_root/pinyin-budget/candidate-budget.json" || result=1
+    mkdir -p "$output_root/screens"
+    for image in pinyin-edit japanese-predictions keyboard-final; do
+        adb pull "/data/local/tmp/fcitx5-$image.png" "$output_root/screens/$image.png" || true
+    done
+    exit "$result"
+fi
 for plugin in chewing clipboard-filter; do
     apk=$(find "plugin/$plugin/build/outputs/apk/debug" -name '*.apk' -print -quit)
     adb install -r "$apk"

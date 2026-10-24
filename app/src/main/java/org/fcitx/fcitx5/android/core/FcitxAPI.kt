@@ -75,6 +75,8 @@ interface FcitxAPI {
     suspend fun hasPreedit(): Boolean
     suspend fun reset()
     suspend fun moveCursor(position: Int)
+    // Pinyin-row coordinates are not the Chinese client commit-preview coordinates.
+    suspend fun movePreeditCursor(position: Int, expectedText: String? = null) = moveCursor(position)
 
     suspend fun availableIme(): Array<InputMethodEntry>
     suspend fun enabledIme(): Array<InputMethodEntry>

@@ -56,7 +56,7 @@ open class PreeditUi(
 
     private val downView = createTextView()
 
-    var onCursorRequested: ((Int) -> Unit)? = null
+    var onCursorRequested: ((Int, String) -> Unit)? = null
     private var preedit = FcitxEvent.InputPanelEvent.Data()
     private var prefixLength = 0
     private var cursorMarker = -1
@@ -70,7 +70,7 @@ open class PreeditUi(
                 val offset = displayed - if (cursorMarker >= 0 && displayed > cursorMarker) 1 else 0
                 if (offset >= prefixLength) {
                     val position = (offset - prefixLength).coerceIn(0, preedit.preedit.length)
-                    onCursorRequested?.invoke(preedit.preedit.codePointCountUntil(position))
+                    onCursorRequested?.invoke(preedit.preedit.codePointCountUntil(position), preedit.preedit.toString())
                 }
                 view.performClick()
             }
