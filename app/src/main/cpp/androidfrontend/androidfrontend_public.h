@@ -41,6 +41,7 @@ FCITX_ADDON_DECLARE_FUNCTION(AndroidFrontend, resetInputContext,
 
 FCITX_ADDON_DECLARE_FUNCTION(AndroidFrontend, repositionCursor,
                              void(int))
+FCITX_ADDON_DECLARE_FUNCTION(AndroidFrontend, repositionPinyinCursor, bool(int))
 
 FCITX_ADDON_DECLARE_FUNCTION(AndroidFrontend, focusInputContext,
                              void(bool))

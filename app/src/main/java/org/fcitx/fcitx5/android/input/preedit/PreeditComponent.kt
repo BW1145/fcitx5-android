@@ -35,8 +35,8 @@ class PreeditComponent : UniqueComponent<PreeditComponent>(), Dependent, InputBr
             backgroundColor = bkgColor
             horizontalPadding = dp(8)
         }).apply {
-            onCursorRequested = { position ->
-                service.movePreeditCursor(position)
+            onCursorRequested = { position, expectedText ->
+                service.movePreeditCursor(position, expectedText)
             }
             // TODO make it customizable
             root.alpha = 0.8f

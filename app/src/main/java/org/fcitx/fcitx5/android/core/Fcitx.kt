@@ -131,6 +131,14 @@ class Fcitx(private val context: Context) : FcitxAPI, FcitxLifecycleOwner {
     override suspend fun isEmpty(): Boolean = withFcitxContext { isInputPanelEmpty() }
     override suspend fun hasPreedit(): Boolean = withFcitxContext { hasInputPreedit() }
     override suspend fun reset() = withFcitxContext { resetInputContext() }
+    override suspend fun movePreeditCursor(position: Int, expectedText: String?) = withFcitxContext {
+        if (!inputTargetIsCurrent()) return@withFcitxContext
+        // A queued tap from an older displayed string must not edit a newer one.
+        if (expectedText != null && inputPanelCached.preedit.toString() != expectedText) return@withFcitxContext
+        if (inputMethodEntryCached.uniqueName != "rime" || !repositionPinyinCursor(position)) {
+            moveCursor(position)
+        }
+    }
     override suspend fun moveCursor(position: Int) = withFcitxContext {
         if (inputMethodEntryCached.uniqueName != "rime") {
             repositionCursor(position)
@@ -412,6 +420,9 @@ class Fcitx(private val context: Context) : FcitxAPI, FcitxLifecycleOwner {
 
         @JvmStatic
         external fun repositionCursor(position: Int)
+
+        @JvmStatic
+        external fun repositionPinyinCursor(position: Int): Boolean
 
         @JvmStatic
         external fun toggleInputMethod()

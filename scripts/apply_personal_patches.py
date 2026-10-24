@@ -23,6 +23,8 @@ def apply(component, source, output):
     rules = [Path(__file__), PATCHES / "common.py"]
     if module.exists():
         rules.append(module)
+    if component == "fcitx5-rime":
+        rules.append(PATCHES / "rime_edit.py")
     for path in [*rules, *files]:
         digest.update(str(path.relative_to(source) if path.is_relative_to(source) else path.name).encode())
         digest.update(path.read_bytes())

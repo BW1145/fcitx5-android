@@ -25,6 +25,7 @@ import org.fcitx.fcitx5.android.core.Fcitx
 import org.fcitx.fcitx5.android.core.FcitxEvent
 import org.fcitx.fcitx5.android.core.FcitxKeyMapping
 import org.fcitx.fcitx5.android.core.FormattedText
+import org.fcitx.fcitx5.android.core.KeyState
 import org.fcitx.fcitx5.android.data.SavedContentStore
 import org.fcitx.fcitx5.android.data.UserDataManager
 import org.fcitx.fcitx5.android.data.theme.ThemeManager
@@ -248,19 +249,87 @@ class PersonalRimeTest {
             candidates("rq") { words -> words.any { it.matches(Regex("\\d{4}-\\d{2}-\\d{2}")) } }
 
             "niho".forEach { fcitx.sendKey(it) }
+            val oldCandidate = fcitx.getCandidates(0, 1).first()
             val preedit = fcitx.inputPanelCached.preedit
             val insertion = preedit.toString().lastIndexOf('o')
             assertTrue("Expected pinyin preedit: $preedit", insertion >= 0)
-            fcitx.moveCursor(preedit.codePointCountUntil(insertion))
+            // Real-Rime regression: at raw2 the suffix is unformatted "ho".
+            // The second tap's cp3 belongs to OLD "niho", not NEW "ni ho".
+            fcitx.movePreeditCursor(2, preedit.toString())
+            val firstTap = fcitx.inputPanelCached.preedit
+            // Read immediately: the direct addon transaction must flush the new
+            // snapshot before returning, not leave the previous full-end cache.
+            assertEquals(2, firstTap.cursor)
+            assertEquals("niho", firstTap.toString())
+            fcitx.movePreeditCursor(3, firstTap.toString())
             assertEquals(insertion, fcitx.inputPanelCached.preedit.cursor)
             fcitx.sendKey('a')
             val edited = fcitx.inputPanelCached.preedit
             assertEquals("nihao", edited.toString().replace(" ", ""))
             assertEquals(edited.toString().lastIndexOf('o'), edited.cursor)
-            // Rime offers candidates for the portion before its caret.
-            fcitx.moveCursor(edited.codePointCountUntil(edited.length))
             val editedCandidates = fcitx.getCandidates(0, 10).map { it.text }
-            assertTrue("Expected 你好 after editing: $editedCandidates", "你好" in editedCandidates)
+            assertTrue("Expected 你好 without moving the edit caret to the end: $editedCandidates", "你好" in editedCandidates)
+            assertFalse("An old candidate revision cannot select the new full menu", fcitx.select(0, oldCandidate))
+            fcitx.sendKey('a', up = true)
+            assertEquals("Key release preserves the visible editing caret", edited.cursor, fcitx.inputPanelCached.preedit.cursor)
+            fcitx.sendKey(FcitxKeyMapping.FcitxKey_BackSpace)
+            assertEquals("niho", fcitx.inputPanelCached.preedit.toString().replace(" ", ""))
+            fcitx.sendKey('a')
+            assertEquals("nihao", fcitx.inputPanelCached.preedit.toString().replace(" ", ""))
+            val commit = scope.async(start = CoroutineStart.UNDISPATCHED) {
+                fcitx.eventFlow.filterIsInstance<FcitxEvent.CommitStringEvent>().first()
+            }
+            assertTrue(fcitx.select(fcitx.getCandidates(0, 10).indexOfFirst { it.text == "你好" }))
+            assertEquals("你好", withTimeout(5_000) { commit.await() }.data.text)
+            assertFalse("Full candidate commit leaves no native raw suffix", fcitx.hasPreedit())
+            // Existing explicit candidate selection publishes its panel on the
+            // next UI flush; unlike our new cursor API it is not synchronous.
+            withTimeout(5_000) { while (!fcitx.inputPanelCached.preedit.isEmpty()) delay(10) }
+            fcitx.reset()
+            "niho".forEach { fcitx.sendKey(it) }
+            fcitx.movePreeditCursor(2, fcitx.inputPanelCached.preedit.toString())
+            fcitx.sendKey(FcitxKeyMapping.FcitxKey_Shift_L)
+            fcitx.sendKey('A', states = KeyState.Shift.state)
+            fcitx.sendKey('A', states = KeyState.Shift.state, up = true)
+            fcitx.sendKey(FcitxKeyMapping.FcitxKey_Shift_L, up = true)
+            assertEquals("niAho", fcitx.inputPanelCached.preedit.toString().replace(" ", ""))
+            fcitx.reset()
+            "niho".forEach { fcitx.sendKey(it) }
+            fcitx.movePreeditCursor(2, fcitx.inputPanelCached.preedit.toString())
+            fcitx.sendKey(FcitxKeyMapping.FcitxKey_Control_L)
+            fcitx.sendKey(FcitxKeyMapping.FcitxKey_BackSpace, states = KeyState.Ctrl.state)
+            fcitx.sendKey(FcitxKeyMapping.FcitxKey_BackSpace, states = KeyState.Ctrl.state, up = true)
+            fcitx.sendKey(FcitxKeyMapping.FcitxKey_Control_L, up = true)
+            assertEquals("ho", fcitx.inputPanelCached.preedit.toString().replace(" ", ""))
+            fcitx.reset()
+            "yiduanzidawanlejiu".forEach { fcitx.sendKey(it) }
+            val sentenceBaseline = fcitx.getCandidates(0, 10).map { it.text }
+            fcitx.reset()
+            "yiduanzidaanlejiu".forEach { fcitx.sendKey(it) }
+            val sentence = fcitx.inputPanelCached.preedit
+            val sentencePrefix = "yiduanzida"
+            val sentenceInsertion = (0..sentence.length).first { index ->
+                sentence.toString().substring(0, index).count { it != ' ' } == sentencePrefix.length
+            }
+            fcitx.movePreeditCursor(sentence.codePointCountUntil(sentenceInsertion), sentence.toString())
+            val sentenceTap = fcitx.inputPanelCached.preedit
+            assertEquals("Tap must land between the two a characters before inserting w",
+                sentencePrefix, sentenceTap.toString().substring(0, sentenceTap.cursor).replace(" ", ""))
+            fcitx.sendKey('w')
+            val corrected = fcitx.inputPanelCached.preedit
+            assertEquals("yiduanzidawanlejiu", corrected.toString().replace(" ", ""))
+            assertEquals("yiduanzidaw", corrected.toString().substring(0, corrected.cursor).replace(" ", ""))
+            assertEquals("Middle edit must expose the same whole-input candidates as end typing",
+                sentenceBaseline, fcitx.getCandidates(0, 10).map { it.text })
+            val sentenceCommit = scope.async(start = CoroutineStart.UNDISPATCHED) {
+                fcitx.eventFlow.filterIsInstance<FcitxEvent.CommitStringEvent>().first()
+            }
+            fcitx.sendKey(' ')
+            assertEquals("Space selects the displayed whole-input candidate, not the editing prefix",
+                sentenceBaseline.first(), withTimeout(5_000) { sentenceCommit.await() }.data.text)
+            assertFalse("Space commits the whole sentence without leaving its native raw suffix",
+                fcitx.hasPreedit())
+            withTimeout(5_000) { while (!fcitx.inputPanelCached.preedit.isEmpty()) delay(10) }
             fcitx.reset()
             "shi".forEach { fcitx.sendKey(it) }
             assertTrue("More candidates must be available beyond the first row", fcitx.getCandidates(16, 16).isNotEmpty())
@@ -355,7 +424,8 @@ class PersonalRimeTest {
         instrumentation.runOnMainSync {
             val ui = PreeditUi(instrumentation.targetContext, ThemeManager.DefaultTheme)
             var requested = -1
-            ui.onCursorRequested = { requested = it }
+            var requestedText = ""
+            ui.onCursorRequested = { position, text -> requested = position; requestedText = text }
             ui.update(FcitxEvent.InputPanelEvent.Data(
                 preedit = FormattedText(arrayOf("ni hao"), intArrayOf(0), 2),
                 auxUp = FormattedText.Empty,
@@ -373,6 +443,7 @@ class PersonalRimeTest {
                 line.dispatchTouchEvent(event)
                 event.recycle()
             }
+            assertEquals("ni hao", requestedText)
             assertEquals(4, requested)
         }
     }

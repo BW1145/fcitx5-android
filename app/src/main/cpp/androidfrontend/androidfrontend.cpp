@@ -744,6 +744,20 @@ void AndroidFrontend::repositionCursor(int position) {
     activeIC_->invokeAction(event);
 }
 
+bool AndroidFrontend::repositionPinyinCursor(int position) {
+    if (!activeIC_) return false;
+    const auto *entry = instance_->inputMethodEntry(activeIC_);
+    if (!entry || entry->uniqueName() != "rime") return false;
+    auto *addon = instance_->addonManager().addon("rime");
+    if (!addon) return false;
+    const bool moved = addon->call<IRimeEngine::personalMoveCursor>(activeIC_, position);
+    // Unlike InputContext::keyEvent, this direct addon call does not pass the
+    // Instance key-event tail which flushes pending UI. Publish the one final
+    // snapshot before Kotlin reads its cache or enters the legacy fallback.
+    instance_->flushUI();
+    return moved;
+}
+
 void AndroidFrontend::focusInputContext(bool focus) {
     if (!activeIC_) return;
     if (focus) {

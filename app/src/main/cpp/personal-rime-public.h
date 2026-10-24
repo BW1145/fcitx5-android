@@ -8,3 +8,5 @@ FCITX_ADDON_DECLARE_FUNCTION(RimeEngine, personalContext,
     std::vector<std::string>(fcitx::InputContext *))
 FCITX_ADDON_DECLARE_FUNCTION(RimeEngine, personalSchemas,
     std::vector<std::string>(const std::string &))
+FCITX_ADDON_DECLARE_FUNCTION(RimeEngine, personalMoveCursor,
+    bool(fcitx::InputContext *, int))

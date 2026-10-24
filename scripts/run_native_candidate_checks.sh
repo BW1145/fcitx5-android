@@ -31,3 +31,12 @@ printf '%s\n' '#pragma once' '#define FCITXUTILS_EXPORT' \
 "${CXX:-g++}" -std=c++20 -O2 -Wall -Wextra -pedantic \
   "$root/scripts/test_preferred_candidate.cpp" -o "$output/preferred-candidate-check"
 "$output/preferred-candidate-check" | tee "$output/preferred-candidate.txt"
+
+# Release smoke gates the whole script. Keep caret-coordinate/modifier behavior,
+# the inactive typing fast path and privacy/budget regressions in that gate.
+python3 "$root/scripts/test_rime_edit.py" --fcitx-headers "$fcitx_lib" \
+  | tee "$output/rime-edit.txt"
+python3 "$root/scripts/test_rime_personal_context.py" \
+  | tee "$output/rime-personal-context.txt"
+CANDIDATE_BUDGET_OUTPUT="$output/candidate-budget-contract" \
+  bash "$root/scripts/run_candidate_budget_contract.sh"

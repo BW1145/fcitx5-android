@@ -148,9 +148,9 @@ class FcitxInputMethodService : LifecycleInputMethodService() {
         postInputJob { if (candidate == null) select(index) else select(index, candidate) }
     }
 
-    fun movePreeditCursor(position: Int) {
+    fun movePreeditCursor(position: Int, expectedText: String) {
         if (panelEditorTarget?.active == false) return
-        postInputJob { moveCursor(position) }
+        postInputJob { this.movePreeditCursor(position, expectedText) }
     }
 
     private val cachedKeyEvents = LruCache<Int, KeyEvent>(78)
