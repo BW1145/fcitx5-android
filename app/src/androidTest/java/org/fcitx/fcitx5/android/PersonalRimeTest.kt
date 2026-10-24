@@ -257,8 +257,10 @@ class PersonalRimeTest {
             // The second tap's cp3 belongs to OLD "niho", not NEW "ni ho".
             fcitx.movePreeditCursor(2, preedit.toString())
             val firstTap = fcitx.inputPanelCached.preedit
-            assertEquals("niho", firstTap.toString())
+            // Read immediately: the direct addon transaction must flush the new
+            // snapshot before returning, not leave the previous full-end cache.
             assertEquals(2, firstTap.cursor)
+            assertEquals("niho", firstTap.toString())
             fcitx.movePreeditCursor(3, firstTap.toString())
             assertEquals(insertion, fcitx.inputPanelCached.preedit.cursor)
             fcitx.sendKey('a')
@@ -279,7 +281,10 @@ class PersonalRimeTest {
             }
             assertTrue(fcitx.select(fcitx.getCandidates(0, 10).indexOfFirst { it.text == "你好" }))
             assertEquals("你好", withTimeout(5_000) { commit.await() }.data.text)
-            assertTrue("Full candidate commit leaves no raw suffix", fcitx.inputPanelCached.preedit.isEmpty())
+            assertFalse("Full candidate commit leaves no native raw suffix", fcitx.hasPreedit())
+            // Existing explicit candidate selection publishes its panel on the
+            // next UI flush; unlike our new cursor API it is not synchronous.
+            withTimeout(5_000) { while (!fcitx.inputPanelCached.preedit.isEmpty()) delay(10) }
             fcitx.reset()
             "niho".forEach { fcitx.sendKey(it) }
             fcitx.movePreeditCursor(2, fcitx.inputPanelCached.preedit.toString())
@@ -318,8 +323,9 @@ class PersonalRimeTest {
             fcitx.sendKey(' ')
             assertEquals("Space selects the displayed whole-input candidate, not the editing prefix",
                 sentenceBaseline.first(), withTimeout(5_000) { sentenceCommit.await() }.data.text)
-            assertTrue("Space commits the whole sentence without leaving its raw suffix",
-                fcitx.inputPanelCached.preedit.isEmpty())
+            assertFalse("Space commits the whole sentence without leaving its native raw suffix",
+                fcitx.hasPreedit())
+            withTimeout(5_000) { while (!fcitx.inputPanelCached.preedit.isEmpty()) delay(10) }
             fcitx.reset()
             "shi".forEach { fcitx.sendKey(it) }
             assertTrue("More candidates must be available beyond the first row", fcitx.getCandidates(16, 16).isNotEmpty())

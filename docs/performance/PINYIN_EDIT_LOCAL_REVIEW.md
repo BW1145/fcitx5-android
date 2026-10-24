@@ -78,6 +78,15 @@ input mismatch and session mismatch invalidate the snapshot.
 7. The initial finish helper still read/copied input on ordinary end appends.
    Production routing now skips the helper entirely on that path, with all
    input/caret/context counters asserted to remain zero for 100 appends.
+8. First API 35 validation (`40049255241`, `ad6d0f2`) passed compilation, unit
+   tests, real screen-tap editing and real candidate-budget checks, but exposed
+   a direct-call UI flush gap. Kotlin read the previous `ni ho` cache immediately
+   after the first tap; logcat shows the correct `niho` snapshot was delivered
+   only after the failing assertion began shutdown. The dedicated native path
+   now calls `Instance::flushUI()` once before returning, as normal key events
+   already do. The immediate-cache assertions are retained, not delayed or
+   weakened. Later assertions in that failed method did not run; a new CI run
+   is required to establish them.
 
 ## Executed checks
 
@@ -120,7 +129,7 @@ git diff --check
   corrected command above passed. This was a harness invocation issue, not an
   Android/native build result.
 
-## Prepared Android acceptance changes (NOT RUN)
+## Android acceptance changes and first CI outcome
 
 `PersonalRimeTest.preeditEditingAndPagingWork` now uses the dedicated pinyin API
 and checks `niho` → insert `a` → full `你好` candidates without moving to the end,
@@ -130,18 +139,23 @@ complete candidate commit without a trailing raw suffix, and the user's
 then Space commits that whole-input candidate without leaving a raw suffix.
 It explicitly performs the two-click `ni|ho` then `nih|o` sequence using the old
 display string, plus full hardware Shift+A and Control+Backspace press/release
-sequences. These real-engine checks are prepared but have NOT been run.
+sequences. The first CI method stopped at the immediate first-tap cache assertion;
+these later real-engine assertions therefore remain unverified pending rerun.
 
 `PersonalKeyboardUiTest` no longer moves to the end before clicking `你好` after
 the actual screen tap and insertion. The UI mapping test checks the source string
 passed with the touch position as well as the cursor-marker coordinate behavior.
+Both the real screen-tap test and marker-mapping test passed in the first CI run,
+as did `PersonalCandidateBudgetTest`. Explicit selection checks use native
+`hasPreedit()` to prove no raw suffix and wait with a timeout for the existing
+asynchronously published UI cache to clear.
 
 ## Required real-engine / UI gate before shipping
 
-No Android/JNI/full-adapter compilation or real Rime test has run. Host helper
-tests cannot establish candidate ranking, actual segmentation, latency, or UI
-correctness. Keep this local until these gates can run without competing with
-the renderer:
+The first isolated CI run compiled Android/JNI/the full adapter and passed unit
+tests, but did not pass all runtime gates. Host helper tests alone cannot establish
+candidate ranking, actual segmentation, latency, or UI correctness. Keep this off
+the release branch until these gates pass on authorized independent CI resources:
 
 1. Compile JNI/Kotlin/generated native adapter and run the updated two tests.
 2. Repeat `niho` repair using click, space, numeric/keypad selection; no suffix,
