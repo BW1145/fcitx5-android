@@ -87,6 +87,13 @@ input mismatch and session mismatch invalidate the snapshot.
    already do. The immediate-cache assertions are retained, not delayed or
    weakened. Later assertions in that failed method did not run; a new CI run
    is required to establish them.
+9. Second CI (`40050947787`, `1755d14`) passed the immediate-cache/two-tap,
+   repeated-edit, complete selection and modifier assertions, then exposed an
+   off-by-one in the long-sentence TEST fixture: `yiduanzida` contains ten letters,
+   not nine. Inserting after nine correctly produced `yiduanzidwaanlejiu`.
+   The test now derives the tap from the named prefix length and verifies that
+   exact prefix before inserting. A host long-input fixture covers raw10 as
+   well. No production mapping change was needed for this test error.
 
 ## Executed checks
 

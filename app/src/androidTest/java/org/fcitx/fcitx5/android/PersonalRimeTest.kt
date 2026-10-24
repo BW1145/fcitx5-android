@@ -307,10 +307,14 @@ class PersonalRimeTest {
             fcitx.reset()
             "yiduanzidaanlejiu".forEach { fcitx.sendKey(it) }
             val sentence = fcitx.inputPanelCached.preedit
+            val sentencePrefix = "yiduanzida"
             val sentenceInsertion = (0..sentence.length).first { index ->
-                sentence.toString().substring(0, index).count { it != ' ' } == 9
+                sentence.toString().substring(0, index).count { it != ' ' } == sentencePrefix.length
             }
             fcitx.movePreeditCursor(sentence.codePointCountUntil(sentenceInsertion), sentence.toString())
+            val sentenceTap = fcitx.inputPanelCached.preedit
+            assertEquals("Tap must land between the two a characters before inserting w",
+                sentencePrefix, sentenceTap.toString().substring(0, sentenceTap.cursor).replace(" ", ""))
             fcitx.sendKey('w')
             val corrected = fcitx.inputPanelCached.preedit
             assertEquals("yiduanzidawanlejiu", corrected.toString().replace(" ", ""))

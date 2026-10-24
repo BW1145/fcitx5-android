@@ -114,6 +114,19 @@ int main() {
         assert(b.raw == "nihoa");
     }
     {
+        Backend b; EditCaret state;
+        const std::string prefix = "yiduanzida", suffix = "anlejiu";
+        b.raw = prefix + suffix; b.pos = b.raw.size();
+        // This fake inserts one display separator. Select the boundary AFTER
+        // the first a (raw10), not before it (raw9).
+        assert(state.move(b, prefix.size() + 1, eligible));
+        assert(state.caret() == prefix.size());
+        assert(state.resume(b)); b.insert('w'); state.finish(b, eligible);
+        assert(b.raw == "yiduanzidawanlejiu");
+        assert(state.caret() == prefix.size() + 1 && b.pos == b.raw.size());
+        assert(b.candidatesFor() == b.raw);
+    }
+    {
         Backend b; b.raw = "nihaoma"; b.pos = 7; b.selected = 5;
         EditCaret state;
         assert(!state.move(b, 1, eligible)); // selected Chinese prefix: legacy fallback, no probing
